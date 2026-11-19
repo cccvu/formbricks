@@ -46,7 +46,7 @@ export const enforceCredentialSignupBackstop = async (
   // Kept anyway because this hook covers EVERY credential user-creation path, not just the one
   // route the before-hook names: any future Better Auth plugin that creates a user (magic link,
   // email OTP, admin create) lands here, and on a closed instance it should not.
-  const admission = await resolveUninvitedSignupAdmission();
+  const admission = await resolveUninvitedSignupAdmission(email);
   if (admission === "denied") {
     throw signupDisabledError();
   }

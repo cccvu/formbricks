@@ -91,6 +91,7 @@ const constantsOverrides = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/constants", () => ({
+  INITIAL_ADMIN_EMAIL: undefined,
   WEBAPP_URL: "http://localhost:3000",
   IS_TURNSTILE_CONFIGURED: false,
   TURNSTILE_SECRET_KEY: undefined,
