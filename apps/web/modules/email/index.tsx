@@ -50,6 +50,7 @@ import {
 import { getOrganizationByWorkspaceId } from "@/lib/organization/service";
 import { TElementResponseMappingSurvey, getElementResponseMapping } from "@/lib/responses";
 import { getTranslate } from "@/lingodotdev/server";
+import { EMAIL_CODE_TTL_SECONDS } from "@/modules/auth/lib/email-code/constants";
 import {
   TVerificationRequestPurpose,
   VERIFICATION_LINK_TTL_SECONDS,
@@ -335,8 +336,8 @@ export const sendSsoSignInHintEmail = async ({
   });
 };
 
-/** How long a sign-in code stays valid, as the email states it. Must match the code's real lifetime. */
-export const SIGN_IN_CODE_VALIDITY_MINUTES = 10;
+/** How long a sign-in code stays valid, as the email states it: derived from the code's real lifetime. */
+export const SIGN_IN_CODE_VALIDITY_MINUTES = EMAIL_CODE_TTL_SECONDS / 60;
 
 /**
  * Emails a one-time sign-in code. The subject never carries the code, so it stays out of notifications and

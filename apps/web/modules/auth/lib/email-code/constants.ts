@@ -49,7 +49,8 @@ export const EMAIL_CODE_SIGN_IN_BODY_KEYS = new Set(["email", "otp", "oauth_quer
 
 /**
  * Password endpoints that stay registered by Better Auth core. With email-code sign-in on and password
- * sign-in off they have no legitimate caller, so they answer 404.
+ * sign-in off they have no legitimate caller, so they answer 404 (`/reset-password` answers 403 first,
+ * from the existing PASSWORD_RESET_DISABLED gate in the root hook).
  */
 export const PASSWORD_ENDPOINT_PATHS = new Set([
   "/change-password",

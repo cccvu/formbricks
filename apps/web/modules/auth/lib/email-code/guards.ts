@@ -14,7 +14,8 @@ import {
   PASSWORD_ENDPOINT_PATHS,
 } from "./constants";
 import { getEmailCodePool, setEmailCodeDeviceCookie } from "./device";
-import { consumeEmailCodeVerifyQuota } from "./limits";
+import { type TEmailCodePool, consumeEmailCodeVerifyQuota } from "./limits";
+import { markEmailCodeSendStart, padEmailCodeSendToFloor, shouldSendEmailCode } from "./send";
 import { getRecipientTag, normalizeEmail } from "./tokens";
 
 /**
@@ -54,47 +55,57 @@ const assertBodyKeys = (ctx: AuthHookContext, allowed: Set<string>): Record<stri
  * how the request URL was spelled. Every refusal here is either independent of the address (origin,
  * body shape, type) or identical to a wrong code (the per-address cap).
  */
-export const emailCodeBeforeHandler = async (ctx: AuthHookContext): Promise<void> => {
-  const path = ctx.path;
+const handleSendBefore = async (ctx: AuthHookContext) => {
+  assertTrustedOrigin(ctx);
+  const body = assertBodyKeys(ctx, EMAIL_CODE_SEND_BODY_KEYS);
+  if (body.type !== "sign-in") throw new APIError("BAD_REQUEST", { message: "Invalid OTP type" });
+  if (typeof body.email !== "string") throw new APIError("BAD_REQUEST", { message: "Invalid request body" });
+  const startedAt = Date.now();
+  markEmailCodeSendStart(ctx.request, startedAt);
+  if (await shouldSendEmailCode(body.email, ctx)) return; // Better Auth stores a new code and mails it.
+  // Not admitted, or over its caps: answer exactly as a real send does, WITHOUT letting Better Auth
+  // store a new code. Rotating here would let anyone kill an owner's emailed code by asking for another.
+  await padEmailCodeSendToFloor(startedAt);
+  return ctx.json({ success: true });
+};
 
+const consumeVerifyQuotaFailClosed = async (recipientTag: string, pool: TEmailCodePool): Promise<boolean> => {
+  try {
+    // Counted BEFORE Better Auth compares the code, so parallel guesses cannot overshoot the cap.
+    return await consumeEmailCodeVerifyQuota(recipientTag, pool);
+  } catch {
+    return false; // Redis down: fail closed.
+  }
+};
+
+const handleSignInBefore = async (ctx: AuthHookContext): Promise<void> => {
+  assertTrustedOrigin(ctx);
+  const body = assertBodyKeys(ctx, EMAIL_CODE_SIGN_IN_BODY_KEYS);
+  if (typeof body.email !== "string" || typeof body.otp !== "string") {
+    throw new APIError("BAD_REQUEST", { message: "Invalid request body" });
+  }
+  const recipientTag = getRecipientTag(body.email);
+  const pool = getEmailCodePool(ctx, body.email);
+  if (!(await consumeVerifyQuotaFailClosed(recipientTag, pool))) {
+    logger.warn(
+      { event: "auth_email_code_throttled", recipientTag, pool, stage: "verify" },
+      "Email code throttled"
+    );
+    throw invalidEmailCodeError();
+  }
+};
+
+export const emailCodeBeforeHandler = async (ctx: AuthHookContext) => {
+  const path = ctx.path;
   // Password sign-in is off, so the password endpoints Better Auth core still mounts have no caller.
   if (PASSWORD_ENDPOINT_PATHS.has(path)) {
     if (!EMAIL_AUTH_ENABLED) throw notFound();
     return;
   }
+  if (path === EMAIL_CODE_SEND_PATH) return handleSendBefore(ctx);
   // Only send is served under /email-otp/*. Anything a future plugin version adds there stays closed.
-  if (path.startsWith("/email-otp/") && path !== EMAIL_CODE_SEND_PATH) throw notFound();
-
-  if (path === EMAIL_CODE_SEND_PATH) {
-    assertTrustedOrigin(ctx);
-    const body = assertBodyKeys(ctx, EMAIL_CODE_SEND_BODY_KEYS);
-    if (body.type !== "sign-in") throw new APIError("BAD_REQUEST", { message: "Invalid OTP type" });
-    return;
-  }
-
-  if (path === EMAIL_CODE_SIGN_IN_PATH) {
-    assertTrustedOrigin(ctx);
-    const body = assertBodyKeys(ctx, EMAIL_CODE_SIGN_IN_BODY_KEYS);
-    if (typeof body.email !== "string" || typeof body.otp !== "string") {
-      throw new APIError("BAD_REQUEST", { message: "Invalid request body" });
-    }
-    const recipientTag = getRecipientTag(body.email);
-    const pool = getEmailCodePool(ctx, body.email);
-    let allowed: boolean;
-    try {
-      // Counted BEFORE Better Auth compares the code, so parallel guesses cannot overshoot the cap.
-      allowed = await consumeEmailCodeVerifyQuota(recipientTag, pool);
-    } catch {
-      allowed = false; // Redis down: fail closed.
-    }
-    if (!allowed) {
-      logger.warn(
-        { event: "auth_email_code_throttled", recipientTag, pool, stage: "verify" },
-        "Email code throttled"
-      );
-      throw invalidEmailCodeError();
-    }
-  }
+  if (path.startsWith("/email-otp/")) throw notFound();
+  if (path === EMAIL_CODE_SIGN_IN_PATH) await handleSignInBefore(ctx);
 };
 
 /**
@@ -102,7 +113,7 @@ export const emailCodeBeforeHandler = async (ctx: AuthHookContext): Promise<void
  * error (both would otherwise say a code exists for the address), logs the outcome, and on success marks
  * this browser as a trusted device for the address.
  */
-export const emailCodeAfterHandler = async (ctx: AuthHookContext): Promise<void> => {
+export const emailCodeAfterHandler = async (ctx: AuthHookContext): Promise<Response | undefined> => {
   if (ctx.path !== EMAIL_CODE_SIGN_IN_PATH) return;
   const email = typeof ctx.body?.email === "string" ? ctx.body.email : undefined;
   const recipientTag = email ? getRecipientTag(email) : undefined;
@@ -118,8 +129,19 @@ export const emailCodeAfterHandler = async (ctx: AuthHookContext): Promise<void>
       },
       "Email code sign-in failed"
     );
-    if (code === "TOO_MANY_ATTEMPTS" || code === "OTP_EXPIRED") throw invalidEmailCodeError();
-    return;
+    if (code !== "TOO_MANY_ATTEMPTS" && code !== "OTP_EXPIRED") return;
+    const error = invalidEmailCodeError();
+    // Over HTTP, Better Auth keeps the status of the error the endpoint threw when an after hook replaces
+    // it (`dispatch.mjs` passes `result.status` to `toResponse`), so a thrown 400 would still go out as
+    // TOO_MANY_ATTEMPTS's 403. Answer with the complete wrong-code response instead.
+    if (ctx.request) {
+      return new Response(JSON.stringify(error.body), {
+        status: error.statusCode,
+        statusText: error.status.toString(),
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw error;
   }
 
   if (ctx.context.newSession && email) {
