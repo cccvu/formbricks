@@ -1,6 +1,8 @@
 import { Metadata } from "next";
+import { redirect } from "next/navigation";
 import {
   EMAIL_AUTH_ENABLED,
+  EMAIL_CODE_AUTH_ENABLED,
   EMAIL_VERIFICATION_DISABLED,
   IS_FORMBRICKS_CLOUD,
   IS_TURNSTILE_CONFIGURED,
@@ -13,6 +15,7 @@ import {
 import { findMatchingLocale } from "@/lib/utils/locale";
 import { getTranslate } from "@/lingodotdev/server";
 import { SignupForm } from "@/modules/auth/signup/components/signup-form";
+import { getEmailCodeSetupSignupRedirectUrl } from "@/modules/auth/signup/lib/email-code-redirect";
 import { getSsoAvailability, toSsoFormProps } from "@/modules/ee/sso/lib/sso-availability";
 
 export const metadata: Metadata = {
@@ -21,6 +24,11 @@ export const metadata: Metadata = {
 };
 
 export const SignupPage = async () => {
+  // With email code sign-in the first admin signs in by code, then continues setup.
+  if (EMAIL_CODE_AUTH_ENABLED) {
+    redirect(getEmailCodeSetupSignupRedirectUrl());
+  }
+
   const locale = await findMatchingLocale();
 
   const ssoAvailability = await getSsoAvailability();

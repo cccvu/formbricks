@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { after } from "next/server";
 import { logger } from "@formbricks/logger";
-import { WEBAPP_URL } from "@/lib/constants";
+import { EMAIL_CODE_AUTH_ENABLED, WEBAPP_URL } from "@/lib/constants";
 import { verifyInviteToken } from "@/lib/jwt";
 import { createMembership } from "@/lib/membership/service";
 import { getUser, updateUser } from "@/lib/user/service";
@@ -60,12 +60,19 @@ export const InvitePage = async (props: InvitePageProps) => {
       return (
         <ContentLayout
           headline={t("auth.invite.happy_to_have_you")}
-          description={t("auth.invite.happy_to_have_you_description")}>
-          <Button variant="secondary" asChild>
-            <Link href={`/auth/signup?inviteToken=${searchParams.token}&email=${encodedEmail}`}>
-              {t("auth.invite.create_account")}
-            </Link>
-          </Button>
+          description={
+            EMAIL_CODE_AUTH_ENABLED
+              ? t("auth.invite.happy_to_have_you_sign_in_description")
+              : t("auth.invite.happy_to_have_you_description")
+          }>
+          {/* Email code sign-in has no sign-up form: the invitee signs in by code. */}
+          {!EMAIL_CODE_AUTH_ENABLED && (
+            <Button variant="secondary" asChild>
+              <Link href={`/auth/signup?inviteToken=${searchParams.token}&email=${encodedEmail}`}>
+                {t("auth.invite.create_account")}
+              </Link>
+            </Button>
+          )}
           <Button asChild>
             <Link href={`/auth/login?callbackUrl=${redirectUrl}&email=${encodedEmail}`}>
               {t("auth.invite.login")}

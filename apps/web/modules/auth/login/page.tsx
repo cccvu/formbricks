@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import {
   EMAIL_AUTH_ENABLED,
+  EMAIL_CODE_AUTH_ENABLED,
   OIDC_DISPLAY_NAME,
   PASSWORD_RESET_DISABLED,
   SIGNUP_ENABLED,
@@ -46,8 +47,10 @@ export const LoginPage = async ({
     <FormWrapper>
       <LoginForm
         emailAuthEnabled={EMAIL_AUTH_ENABLED}
-        publicSignUpEnabled={SIGNUP_ENABLED}
-        passwordResetEnabled={!PASSWORD_RESET_DISABLED}
+        emailCodeAuthEnabled={EMAIL_CODE_AUTH_ENABLED}
+        // Email code sign-in has no password and no sign-up form, so neither link applies.
+        publicSignUpEnabled={SIGNUP_ENABLED && !EMAIL_CODE_AUTH_ENABLED}
+        passwordResetEnabled={!PASSWORD_RESET_DISABLED && !EMAIL_CODE_AUTH_ENABLED}
         {...toSsoFormProps(ssoAvailability)}
         oidcDisplayName={OIDC_DISPLAY_NAME}
         isMultiOrgEnabled={isMultiOrgEnabled}
