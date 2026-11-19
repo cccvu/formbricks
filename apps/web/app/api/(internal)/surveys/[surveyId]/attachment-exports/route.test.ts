@@ -37,7 +37,7 @@ vi.mock("@/modules/storage/attachment-export/authorize", () => ({
 }));
 vi.mock("@/lib/constants", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/constants")>()),
-  get IS_SMTP_CONFIGURED() {
+  get IS_MAILER_CONFIGURED() {
     return mocks.smtp.configured;
   },
 }));

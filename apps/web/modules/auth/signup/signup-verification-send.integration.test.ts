@@ -11,7 +11,7 @@ import { sendVerificationLinkEmail } from "@/modules/email";
  * so any send outcome reaching the caller would answer "did this address already have an account?" —
  * and anyone who can send an invite could ask. The failure is logged and reported to Sentry instead
  * (auth.ts `sendVerificationEmail`), and the verification-requested screen derives its "nothing was
- * sent" copy from IS_SMTP_CONFIGURED, which does not depend on the address.
+ * sent" copy from IS_MAILER_CONFIGURED, which does not depend on the address.
  *
  * MUST: still create the account. Better Auth calls the callback through `runInBackgroundOrAwait`,
  * whose catch only logs, so sign-up resolves 200 whatever we throw — the user has a real account and

@@ -181,6 +181,43 @@ SMTP_USER=your_ses_access_key
 SMTP_PASSWORD=your_ses_secret_key
 ```
 
+### Amazon SES API
+
+Instead of SES SMTP credentials, Formbricks can send through the Amazon SES v2 API using the default AWS
+credential chain, such as a container task role, an instance profile or a web identity token. Set
+`SES_REGION` to the region your SES identity is verified in:
+
+```bash
+SES_REGION=us-east-1
+MAIL_FROM=noreply@yourdomain.com
+MAIL_FROM_NAME=Formbricks
+```
+
+- `MAIL_FROM` is required when `SES_REGION` is set, and must be a verified SES identity (or an address on a
+  verified domain).
+- When `SES_REGION` is set, all `SMTP_*` settings are ignored.
+- No access keys go into Formbricks configuration. Grant the role Formbricks runs as `ses:SendEmail` and
+  `ses:SendRawEmail`, and restrict the sender with a `ses:FromAddress` condition:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "ses:FromAddress": "noreply@yourdomain.com" } }
+    }
+  ]
+}
+```
+
+- `SES_CONFIGURATION_SET` and `SES_EMAIL_ENVIRONMENT` work as with SES SMTP: they are sent as the API's
+  configuration set and `email_type` / `environment` message tags instead of `X-SES-*` headers.
+- Each send times out after a few seconds and is retried once, so a slow SES endpoint fails the send instead
+  of holding the request open. A send that timed out after SES had already accepted it can be delivered twice.
+
 ### Gmail
 
 ```bash

@@ -11,9 +11,11 @@ const mocks = vi.hoisted(() => ({
   finishEmailSendAudit: vi.fn(),
   reportEmailAuditFailure: vi.fn(),
   loggerError: vi.fn(),
+  sendEmailWithSes: vi.fn(),
   constants: {
     DEBUG: false,
-    IS_SMTP_CONFIGURED: true,
+    IS_MAILER_CONFIGURED: true,
+    IS_SES_API_CONFIGURED: false,
     MAIL_FROM: "hola@example.com",
     MAIL_FROM_NAME: "Formbricks",
     SES_CONFIGURATION_SET: undefined as string | undefined,
@@ -41,6 +43,10 @@ vi.mock("./email-send-audit", () => ({
   finishEmailSendAudit: mocks.finishEmailSendAudit,
 }));
 vi.mock("./email-audit-monitoring", () => ({ reportEmailAuditFailure: mocks.reportEmailAuditFailure }));
+vi.mock("./ses-transport", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./ses-transport")>()),
+  sendEmailWithSes: mocks.sendEmailWithSes,
+}));
 
 const email = {
   emailType: "invite" as const,
@@ -109,7 +115,9 @@ describe("sendEmail SES event publishing", () => {
     mocks.beginEmailSendAudit.mockResolvedValue(null);
     mocks.finishEmailSendAudit.mockResolvedValue(undefined);
     mocks.reportEmailAuditFailure.mockResolvedValue(undefined);
-    mocks.constants.IS_SMTP_CONFIGURED = true;
+    mocks.constants.IS_MAILER_CONFIGURED = true;
+    mocks.constants.IS_SES_API_CONFIGURED = false;
+    mocks.sendEmailWithSes.mockResolvedValue({ serverMessageId: "ses-message-id" });
     mocks.constants.SES_CONFIGURATION_SET = undefined;
     mocks.constants.SES_EMAIL_ENVIRONMENT = undefined;
     mocks.constants.EMAIL_SEND_AUDIT_ENABLED = false;
@@ -283,7 +291,7 @@ describe("sendEmail SES event publishing", () => {
   );
 
   test("skips unconfigured SMTP without spending any email budget", async () => {
-    mocks.constants.IS_SMTP_CONFIGURED = false;
+    mocks.constants.IS_MAILER_CONFIGURED = false;
     expect(await sendEmail(email)).toBe(false);
     expect(mocks.sendMail).not.toHaveBeenCalled();
     expect(mocks.applyEmailRateLimits).not.toHaveBeenCalled();
@@ -360,6 +368,78 @@ describe("sendEmail SES event publishing", () => {
     await expect(sendEmail(email)).rejects.toThrow("Incorrect SMTP credentials");
     expect(mocks.loggerError).toHaveBeenCalledWith(
       { emailType: "invite", event: "email_send_failed", errorCode: "EENVELOPE" },
+      "Error in sendEmail"
+    );
+    expect(JSON.stringify(mocks.loggerError.mock.calls)).not.toContain("recipient@example.com");
+  });
+});
+
+describe("sendEmail transport selection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.applyEmailRateLimits.mockResolvedValue(undefined);
+    mocks.createTransport.mockReturnValue({ sendMail: mocks.sendMail });
+    mocks.sendMail.mockResolvedValue({ messageId: "smtp-message-id" });
+    mocks.sendEmailWithSes.mockResolvedValue({ serverMessageId: "ses-message-id" });
+    mocks.beginEmailSendAudit.mockResolvedValue(null);
+    mocks.finishEmailSendAudit.mockResolvedValue(undefined);
+    mocks.constants.IS_MAILER_CONFIGURED = true;
+    mocks.constants.IS_SES_API_CONFIGURED = false;
+    mocks.constants.SES_CONFIGURATION_SET = undefined;
+    mocks.constants.SES_EMAIL_ENVIRONMENT = undefined;
+  });
+
+  test("sends through SMTP and never SES when the SES API is not configured", async () => {
+    await expect(sendEmail(email)).resolves.toBe(true);
+    expect(mocks.sendMail).toHaveBeenCalledTimes(1);
+    expect(mocks.sendEmailWithSes).not.toHaveBeenCalled();
+  });
+
+  test("sends through the SES API, without SES headers or an SMTP connection, when configured", async () => {
+    mocks.constants.IS_SES_API_CONFIGURED = true;
+    mocks.constants.SES_CONFIGURATION_SET = "formbricks-email-config";
+    mocks.constants.SES_EMAIL_ENVIRONMENT = "staging";
+
+    await expect(sendEmail({ ...email, replyTo: "reply@example.com" })).resolves.toBe(true);
+
+    expect(mocks.createTransport).not.toHaveBeenCalled();
+    expect(mocks.sendMail).not.toHaveBeenCalled();
+    expect(mocks.sendEmailWithSes).toHaveBeenCalledWith(
+      {
+        to: email.to,
+        subject: email.subject,
+        html: email.html,
+        replyTo: "reply@example.com",
+        from: "Formbricks <hola@example.com>",
+      },
+      "invite"
+    );
+  });
+
+  test("hands the SES MessageId to the send audit", async () => {
+    mocks.constants.IS_SES_API_CONFIGURED = true;
+    const state = { id: "audit-id", rowCreated: true, auditGap: false };
+    mocks.beginEmailSendAudit.mockResolvedValueOnce(state);
+
+    await sendEmail(email);
+
+    expect(mocks.finishEmailSendAudit).toHaveBeenCalledWith(state, "invite", email.auditContext, "accepted", {
+      serverMessageId: "ses-message-id",
+    });
+  });
+
+  test("keeps the failure contract and logs only the SES error class", async () => {
+    mocks.constants.IS_SES_API_CONFIGURED = true;
+    mocks.sendEmailWithSes.mockRejectedValueOnce(
+      Object.assign(new Error("Email address is not verified: recipient@example.com"), {
+        name: "MessageRejected",
+        $metadata: { httpStatusCode: 400 },
+      })
+    );
+
+    await expect(sendEmail(email)).rejects.toThrow("Incorrect SMTP credentials");
+    expect(mocks.loggerError).toHaveBeenCalledWith(
+      { emailType: "invite", event: "email_send_failed", transport: "ses_api", errorCode: "rejected" },
       "Error in sendEmail"
     );
     expect(JSON.stringify(mocks.loggerError.mock.calls)).not.toContain("recipient@example.com");

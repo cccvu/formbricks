@@ -6,7 +6,8 @@ import { InvalidInputError } from "@formbricks/types/errors";
 import {
   DEBUG,
   EMAIL_SEND_AUDIT_ENABLED,
-  IS_SMTP_CONFIGURED,
+  IS_MAILER_CONFIGURED,
+  IS_SES_API_CONFIGURED,
   MAIL_FROM,
   MAIL_FROM_NAME,
   SES_CONFIGURATION_SET,
@@ -23,6 +24,7 @@ import {
 import { reportEmailAuditFailure } from "./email-audit-monitoring";
 import { type TEmailRateLimitContext, applyEmailRateLimits } from "./email-rate-limits";
 import { type TEmailAuditContext, beginEmailSendAudit, finishEmailSendAudit } from "./email-send-audit";
+import { classifySesError, sendEmailWithSes } from "./ses-transport";
 
 // Fixed categories keep CloudWatch cardinality independent of users and surveys.
 export type TEmailType =
@@ -37,6 +39,7 @@ export type TEmailType =
   | "account_deletion_notification"
   | "sso_recovery_notification"
   | "sso_sign_in_hint"
+  | "sign_in_code"
   | "data_retention_notice"
   | "attachment_export"
   | "response_notification"
@@ -90,6 +93,8 @@ const getSesHeaders = (emailType: TEmailType) =>
       }
     : {};
 
+const getDefaultFrom = () => `${MAIL_FROM_NAME ?? "Formbricks"} <${MAIL_FROM ?? "noreply@formbricks.com"}>`;
+
 const submitEmailToSmtp = async (
   emailData: Omit<SendEmailDataProps, "emailType" | "rateLimit" | "auditContext">,
   emailType: TEmailType
@@ -106,13 +111,19 @@ const submitEmailToSmtp = async (
     debug: DEBUG && !EMAIL_SEND_AUDIT_ENABLED,
   };
   const transporter = createTransport(transportOptions);
-  const defaultFrom = `${MAIL_FROM_NAME ?? "Formbricks"} <${MAIL_FROM ?? "noreply@formbricks.com"}>`;
   return transporter.sendMail({
     ...emailData,
-    from: emailData.from ?? defaultFrom,
+    from: emailData.from ?? getDefaultFrom(),
     ...getSesHeaders(emailType),
   });
 };
+
+/** The SES v2 API path: configuration set and tags travel as API parameters instead of SES headers. */
+const submitEmailToSesApi = (
+  emailData: Omit<SendEmailDataProps, "emailType" | "rateLimit" | "auditContext">,
+  emailType: TEmailType
+): Promise<unknown> =>
+  sendEmailWithSes({ ...emailData, from: emailData.from ?? getDefaultFrom() }, emailType);
 
 /**
  * One plain address, read the way nodemailer will read it: no list, no group, no display name, no angle
@@ -159,7 +170,7 @@ export const sendEmail = async ({
   if (!isSingleRecipient(emailData.to)) {
     throw new InvalidInputError("An email must have exactly one valid recipient address");
   }
-  if (!IS_SMTP_CONFIGURED) {
+  if (!IS_MAILER_CONFIGURED) {
     logger.info("SMTP is not configured, skipping email sending");
     return false;
   }
@@ -177,9 +188,13 @@ export const sendEmail = async ({
   } catch {
     await reportEmailAuditFailure("email_audit_gap", { phase: "unhandled_begin" });
   }
+  // SES_REGION selects the SES v2 API; SMTP_* is then ignored. Unset, the SMTP path below is unchanged.
+  const useSesApi = IS_SES_API_CONFIGURED;
   let sendInfo: unknown;
   try {
-    sendInfo = await submitEmailToSmtp(emailData, emailType);
+    sendInfo = useSesApi
+      ? await submitEmailToSesApi(emailData, emailType)
+      : await submitEmailToSmtp(emailData, emailType);
   } catch (error) {
     try {
       await finishEmailSendAudit(auditState, emailType, auditContext, "failed");
@@ -187,11 +202,13 @@ export const sendEmail = async ({
       await reportEmailAuditFailure("email_audit_gap", { phase: "unhandled_finish" });
     }
     logger.error(
-      {
-        emailType,
-        event: "email_send_failed",
-        errorCode: getSafeSmtpErrorCode(error),
-      },
+      useSesApi
+        ? { emailType, event: "email_send_failed", transport: "ses_api", errorCode: classifySesError(error) }
+        : {
+            emailType,
+            event: "email_send_failed",
+            errorCode: getSafeSmtpErrorCode(error),
+          },
       "Error in sendEmail"
     );
     throw new InvalidInputError("Incorrect SMTP credentials");

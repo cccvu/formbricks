@@ -28,6 +28,7 @@
     "@aws-sdk/client-cloudwatch": "3.1007.0",
     "@aws-sdk/client-kms": "3.1007.0",
     "@aws-sdk/client-s3": "catalog:",
+    "@aws-sdk/client-sesv2": "3.1007.0",
     "@authzed/authzed-node": "1.6.1",
     "@better-auth/core": "1.7.7",
     "@better-auth/oauth-provider": "1.7.7",
