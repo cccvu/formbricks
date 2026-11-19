@@ -93,6 +93,11 @@ export const exampleData = {
     loginLink: "https://app.formbricks.com/auth/login",
   },
 
+  signInCodeEmail: {
+    code: "48207135",
+    validityInMinutes: 10,
+  },
+
   inviteEmail: {
     inviteeName: "Jane Smith",
     inviterName: "John Doe",

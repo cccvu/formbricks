@@ -62,6 +62,7 @@ anyone's.
 | `account_deletion` | An SSO user deletes their account | Server (the account) | User (where it starts) |
 | `sso_recovery_notification` | SSO recovery removed local sign-in factors | Server (the account) | Follows the recovery flow |
 | `sso_sign_in_hint` | Forgot password on an SSO-only account | Whoever asks | Account (where it starts); recipient |
+| `sign_in_code` | A one-time sign-in code is requested | Whoever asks | Address (where it starts: 1 a minute, 5 per 15 minutes, 10 a day); recipient (12 a day, a backstop) |
 | `data_retention_notice` | Nightly data retention sweep | Server (organization members) | Bounded by the sweep |
 | `response_notification` | A response is completed | Server (subscribed members) | Organization |
 | `survey_preview` | "Send preview" from the embed tab | Server (the user) | User |

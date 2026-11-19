@@ -129,6 +129,11 @@ const translations: Record<TranslationKey, TranslationValue> = {
   "emails.retention_notice_email_text_surveys":
     "{organizationName} automatically archives surveys that haven't been used in a while. The following is due soon:",
   "emails.retention_notice_email_view_settings": "View data retention settings",
+  "emails.sign_in_code_email_did_not_request":
+    "If you didn't request it, you can ignore this email. Never share this code.",
+  "emails.sign_in_code_email_expiry": "This code expires in {minutes} minutes and can be used once.",
+  "emails.sign_in_code_email_heading": "Your sign-in code",
+  "emails.sign_in_code_email_subject": "Your sign-in code",
   "emails.sso_sign_in_hint_email_did_not_request":
     "If you did not request this, you can ignore this email. Nothing about your account has changed.",
   "emails.sso_sign_in_hint_email_go_to_login": "Go to sign in",
@@ -181,7 +186,7 @@ const replacePlaceholders = (text: string, replacements?: Record<string, string>
 
   let result = text;
   Object.entries(replacements).forEach(([key, value]) => {
-    result = result.replace(new RegExp(`\\{${key}\\}`, "g"), value);
+    result = result.replace(new RegExp(String.raw`\{${key}\}`, "g"), value);
   });
 
   return result;

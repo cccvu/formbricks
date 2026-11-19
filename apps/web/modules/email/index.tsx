@@ -16,6 +16,7 @@ import {
   renderNewEmailVerification,
   renderPasswordResetNotifyEmail,
   renderResponseFinishedEmail,
+  renderSignInCodeEmail,
   renderSsoRecoveryFactorsRemovedEmail,
   renderSsoSignInHintEmail,
   renderSurveyRetentionNoticeEmail,
@@ -28,8 +29,16 @@ import { ResourceNotFoundError } from "@formbricks/types/errors";
 import type { TResponse } from "@formbricks/types/responses";
 import { TSurveyElementTypeEnum } from "@formbricks/types/surveys/elements";
 import type { TSurvey } from "@formbricks/types/surveys/types";
-import { TUserEmail, TUserLocale } from "@formbricks/types/user";
-import { IMPRINT_ADDRESS, IMPRINT_URL, MAIL_FROM, PRIVACY_URL, TERMS_URL, WEBAPP_URL } from "@/lib/constants";
+import { TUserEmail, TUserLocale, ZUserLocale } from "@formbricks/types/user";
+import {
+  DEFAULT_LOCALE,
+  IMPRINT_ADDRESS,
+  IMPRINT_URL,
+  MAIL_FROM,
+  PRIVACY_URL,
+  TERMS_URL,
+  WEBAPP_URL,
+} from "@/lib/constants";
 import { getPublicDomain } from "@/lib/getPublicUrl";
 import {
   createEmailChangeToken,
@@ -323,6 +332,35 @@ export const sendSsoSignInHintEmail = async ({
     to: email,
     subject: t("emails.sso_sign_in_hint_email_subject"),
     html,
+  });
+};
+
+/** How long a sign-in code stays valid, as the email states it. Must match the code's real lifetime. */
+export const SIGN_IN_CODE_VALIDITY_MINUTES = 10;
+
+/**
+ * Emails a one-time sign-in code. The subject never carries the code, so it stays out of notifications and
+ * inbox previews, and nothing here logs the address or the code. Returns `sendEmail`'s result (false when
+ * SMTP isn't configured) and lets a send failure throw, so the caller decides what the visitor sees.
+ *
+ * An unknown or missing locale falls back to the default rather than to the request's: the caller may run
+ * before anyone is signed in, and the locale must not come from the request body unchecked.
+ */
+export const sendSignInCodeEmail = async (to: string, code: string, locale?: string): Promise<boolean> => {
+  const parsedLocale = ZUserLocale.safeParse(locale);
+  const t = await getTranslate(parsedLocale.success ? parsedLocale.data : DEFAULT_LOCALE);
+  const { html, text } = await renderSignInCodeEmail({
+    code,
+    validityInMinutes: SIGN_IN_CODE_VALIDITY_MINUTES,
+    t,
+  });
+  return await sendEmail({
+    emailType: "sign_in_code",
+    auditContext: { trigger: "system" },
+    to,
+    subject: t("emails.sign_in_code_email_subject"),
+    html,
+    text,
   });
 };
 

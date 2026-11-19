@@ -119,6 +119,9 @@ export const emailRateLimits: Record<TEmailType, TEmailRateLimit> = {
   account_deletion_notification: {},
   sso_recovery_notification: {},
   sso_sign_in_hint: { recipient: { total: limit(3) } },
+  // A backstop only: the sign-in flow enforces the real caps per address (1 a minute, 5 per 15 minutes, 10 a
+  // day), so this sits just above them and only catches a caller that bypasses those.
+  sign_in_code: { recipient: { total: limit(12, DAY) } },
   data_retention_notice: {},
   // One per export the user started, and starting one is already rate-limited per user.
   attachment_export: {},

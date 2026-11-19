@@ -41,6 +41,9 @@ vi.mock("@/modules/email", () => ({
   sendSsoRecoveryFactorsRemovedEmail: vi.fn(async () => true),
   // ENG-3262: forgot-password sends this instead of a reset link to an account with no password.
   sendSsoSignInHintEmail: vi.fn(async () => true),
+  // Email sign-in codes: a test reads the code it was sent from
+  // `vi.mocked(sendSignInCodeEmail).mock.calls.at(-1)` — `[to, code, locale]`.
+  sendSignInCodeEmail: vi.fn(async () => true),
   sendPasswordResetLinkEmail: vi.fn(async () => true),
   sendPasswordResetNotifyEmail: vi.fn(async () => true),
   sendDeleteAccountConfirmationEmail: vi.fn(async () => true),

@@ -129,6 +129,7 @@ describe("emailRateLimits", () => {
         "email_change_verification",
         "email_verification",
         "password_reset",
+        "sign_in_code",
         "sso_recovery_verification",
         "sso_sign_in_hint",
       ].sort()
