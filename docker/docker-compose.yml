@@ -90,6 +90,9 @@ x-environment: &environment
     # Email Configuration
     # MAIL_FROM:
     # MAIL_FROM_NAME:
+
+    # Send through the Amazon SES v2 API (default AWS credential chain) instead of SMTP
+    # SES_REGION:
     # SMTP_HOST:
     # SMTP_PORT:
     # SMTP_USER:
@@ -116,6 +119,12 @@ x-environment: &environment
 
     # Set the below to 1 to disable logins with email
     # EMAIL_AUTH_DISABLED:
+
+    # Set the below to 1 to sign in with a one-time code sent by email (requires email configuration)
+    # EMAIL_CODE_AUTH_ENABLED:
+
+    # The only address allowed to create the first account on an empty instance
+    # INITIAL_ADMIN_EMAIL:
 
     # Set the below to 1 to disable invites
     # INVITE_DISABLED:

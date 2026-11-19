@@ -540,6 +540,14 @@ const ZSesConfigurationEnv = z.object({
     .max(64)
     .regex(/^[a-zA-Z0-9_-]+$/)
     .optional(),
+  // Send through the Amazon SES v2 API (default AWS credential chain) instead of SMTP.
+  SES_REGION: z.preprocess(
+    emptyStringToUndefined,
+    z
+      .string()
+      .regex(/^[a-z]{2}(-[a-z]+)+-\d$/)
+      .optional()
+  ),
 });
 type TSesConfigurationEnv = z.infer<typeof ZSesConfigurationEnv>;
 
@@ -556,6 +564,43 @@ const validateSesConfiguration = (values: TSesConfigurationEnv, ctx: z.Refinemen
       ctx,
       "SES_CONFIGURATION_SET",
       "SES_CONFIGURATION_SET is required when SES_EMAIL_ENVIRONMENT is set"
+    );
+  }
+};
+
+// The SES API mailer needs a sender. Email-code sign-in replaces passwords, so it must have a working mailer and must not leave a password
+// recovery path open beside it.
+const ZEmailCodeAuthEnv = z.object({
+  EMAIL_CODE_AUTH_ENABLED: z.enum(["1", "0"]).optional(),
+  EMAIL_AUTH_DISABLED: z.enum(["1", "0"]).optional(),
+  PASSWORD_RESET_DISABLED: z.enum(["1", "0"]).optional(),
+  SES_REGION: ZSesConfigurationEnv.shape.SES_REGION,
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  MAIL_FROM: z.string().optional(),
+});
+
+const validateEmailCodeAuthConfiguration = (
+  values: z.infer<typeof ZEmailCodeAuthEnv>,
+  ctx: z.RefinementCtx
+): void => {
+  if (values.SES_REGION && !values.MAIL_FROM) {
+    addEnvIssue(ctx, "MAIL_FROM", "MAIL_FROM is required when SES_REGION is set");
+  }
+  if (values.EMAIL_CODE_AUTH_ENABLED !== "1") return;
+  const hasMailer = Boolean(values.SES_REGION) || Boolean(values.SMTP_HOST && values.SMTP_PORT);
+  if (!hasMailer || !values.MAIL_FROM) {
+    addEnvIssue(
+      ctx,
+      "EMAIL_CODE_AUTH_ENABLED",
+      "EMAIL_CODE_AUTH_ENABLED=1 requires a mailer (SES_REGION, or SMTP_HOST and SMTP_PORT) and MAIL_FROM"
+    );
+  }
+  if (values.EMAIL_AUTH_DISABLED === "1" && values.PASSWORD_RESET_DISABLED !== "1") {
+    addEnvIssue(
+      ctx,
+      "PASSWORD_RESET_DISABLED",
+      "PASSWORD_RESET_DISABLED=1 is required when EMAIL_CODE_AUTH_ENABLED=1 and EMAIL_AUTH_DISABLED=1"
     );
   }
 };
@@ -651,6 +696,8 @@ const parsedEnv = createEnv({
     BULLMQ_WORKER_ENABLED: z.enum(["1", "0"]).optional(),
     E2E_TESTING: z.enum(["1", "0"]).optional(),
     EMAIL_AUTH_DISABLED: z.enum(["1", "0"]).optional(),
+    // Sign in with a one-time code sent by email (modules/auth/lib/email-code). Off by default.
+    EMAIL_CODE_AUTH_ENABLED: z.enum(["1", "0"]).optional(),
     // Scales the per-organization, per-sender and per-deployment email caps
     // (modules/email/lib/email-rate-limits.ts), for deployments that legitimately send more than the defaults
     // allow. Per-recipient caps are not scaled. Blank counts as unset, so a templated empty value does not stop
@@ -725,6 +772,9 @@ const parsedEnv = createEnv({
     POSTHOG_KEY: z.string().optional(),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error", "fatal"]).optional(),
     MAIL_FROM: z.email().optional(),
+    // The only address that may create the first account on an instance with no users. Unset keeps the
+    // previous behavior (the first sign-up becomes the instance admin).
+    INITIAL_ADMIN_EMAIL: z.preprocess(emptyStringToUndefined, z.email().optional()),
     // `NEXTAUTH_*` are the undocumented backward-compatible alias for `BETTER_AUTH_*` (ENG-2599);
     // lib/constants.ts resolves the pair and explains why the alias is permanent.
     //
@@ -899,6 +949,7 @@ const parsedEnv = createEnv({
     BULLMQ_WORKER_ENABLED: process.env.BULLMQ_WORKER_ENABLED,
     E2E_TESTING: process.env.E2E_TESTING,
     EMAIL_AUTH_DISABLED: process.env.EMAIL_AUTH_DISABLED,
+    EMAIL_CODE_AUTH_ENABLED: process.env.EMAIL_CODE_AUTH_ENABLED,
     EMAIL_RATE_LIMIT_MULTIPLIER: process.env.EMAIL_RATE_LIMIT_MULTIPLIER,
     EMAIL_VERIFICATION_DISABLED: process.env.EMAIL_VERIFICATION_DISABLED,
     ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
@@ -959,6 +1010,7 @@ const parsedEnv = createEnv({
     POSTHOG_KEY: process.env.POSTHOG_KEY,
     LOG_LEVEL: process.env.LOG_LEVEL,
     MAIL_FROM: process.env.MAIL_FROM,
+    INITIAL_ADMIN_EMAIL: process.env.INITIAL_ADMIN_EMAIL,
     MAIL_FROM_NAME: process.env.MAIL_FROM_NAME,
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
@@ -998,6 +1050,7 @@ const parsedEnv = createEnv({
     SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
     SES_CONFIGURATION_SET: process.env.SES_CONFIGURATION_SET,
     SES_EMAIL_ENVIRONMENT: process.env.SES_EMAIL_ENVIRONMENT,
+    SES_REGION: process.env.SES_REGION,
     SMTP_HOST: process.env.SMTP_HOST,
     SMTP_PASSWORD: process.env.SMTP_PASSWORD,
     SMTP_PORT: process.env.SMTP_PORT,
@@ -1035,10 +1088,12 @@ const parsedEnv = createEnv({
 const ZPostParseEnv = ZAIConfigurationEnv.extend(ZAuthzedConfigurationEnv.shape)
   .extend(ZSesConfigurationEnv.shape)
   .extend(ZEmailSendAuditEnv.shape)
+  .extend(ZEmailCodeAuthEnv.shape)
   .superRefine(validateActiveAIProviderConfiguration)
   .superRefine(validateAuthzedConfiguration)
   .superRefine(validateSesConfiguration)
-  .superRefine(validateEmailSendAuditConfiguration);
+  .superRefine(validateEmailSendAuditConfiguration)
+  .superRefine(validateEmailCodeAuthConfiguration);
 const postParseResult = ZPostParseEnv.safeParse(parsedEnv);
 
 if (!postParseResult.success) {
