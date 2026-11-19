@@ -48,6 +48,22 @@ describe("sendSignInCodeEmail", () => {
     expect(text).toContain(code);
   });
 
+  test("states the code's real lifetime, derived from EMAIL_CODE_TTL_SECONDS", async () => {
+    // A different lifetime must change what the email says, so a hardcoded number cannot drift from it.
+    vi.doMock("@/modules/auth/lib/email-code/constants", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/modules/auth/lib/email-code/constants")>()),
+      EMAIL_CODE_TTL_SECONDS: 900,
+    }));
+    try {
+      const fresh = await import("./index");
+      expect(fresh.SIGN_IN_CODE_VALIDITY_MINUTES).toBe(15);
+      await fresh.sendSignInCodeEmail(to, code, "en-US");
+      expect(sentEmail().html).toContain("This code expires in 15 minutes and can be used once.");
+    } finally {
+      vi.doUnmock("@/modules/auth/lib/email-code/constants");
+    }
+  });
+
   test.each([true, false])("returns sendEmail's result (%s)", async (sent) => {
     sendEmail.mockResolvedValue(sent);
 
