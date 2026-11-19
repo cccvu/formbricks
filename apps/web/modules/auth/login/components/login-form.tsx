@@ -13,6 +13,7 @@ import { FORMBRICKS_LOGGED_IN_WITH_LS } from "@/lib/localStorage";
 import { buildAttributionQuerySuffix } from "@/modules/auth/lib/attribution";
 import { authClient } from "@/modules/auth/lib/auth-client";
 import { getOAuthErrorVariant } from "@/modules/auth/lib/oauth-error";
+import { EmailCodeForm } from "@/modules/auth/login/components/email-code-form";
 import { SSOOptions } from "@/modules/ee/sso/components/sso-options";
 import { TwoFactor } from "@/modules/ee/two-factor-auth/components/two-factor";
 import { TwoFactorBackup } from "@/modules/ee/two-factor-auth/components/two-factor-backup";
@@ -40,6 +41,8 @@ type TLoginForm = z.infer<typeof ZLoginForm>;
 
 interface LoginFormProps {
   emailAuthEnabled: boolean;
+  // Replaces the email + password form with the one-time email code form.
+  emailCodeAuthEnabled: boolean;
   publicSignUpEnabled: boolean;
   passwordResetEnabled: boolean;
   googleOAuthEnabled: boolean;
@@ -60,6 +63,7 @@ interface LoginFormProps {
 
 export const LoginForm = ({
   emailAuthEnabled,
+  emailCodeAuthEnabled,
   publicSignUpEnabled,
   passwordResetEnabled,
   googleOAuthEnabled,
@@ -258,92 +262,96 @@ export const LoginForm = ({
         )}
 
         <div className="space-y-2">
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
-            {TwoFactorComponent}
-            {showLogin && (
-              <div className={cn(totpLogin && "hidden", "space-y-2")}>
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem className="w-full text-left">
-                      <FormLabel>{t("common.email")}</FormLabel>
-                      <FormControl>
-                        <Input
-                          ref={emailRef}
-                          type="email"
-                          autoComplete="email"
-                          inputMode="email"
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          spellCheck={false}
-                          required
-                          name={field.name}
-                          value={field.value}
-                          onBlur={field.onBlur}
-                          onChange={(email) => field.onChange(email)}
-                          placeholder="work@email.com"
-                        />
-                      </FormControl>
-                      <FormError role="alert" />
-                    </FormItem>
+          {emailCodeAuthEnabled ? (
+            <EmailCodeForm prefilledEmail={prefilledEmail} resolvedCallbackPath={resolvedCallbackPath} />
+          ) : (
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
+              {TwoFactorComponent}
+              {showLogin && (
+                <div className={cn(totpLogin && "hidden", "space-y-2")}>
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem className="w-full text-left">
+                        <FormLabel>{t("common.email")}</FormLabel>
+                        <FormControl>
+                          <Input
+                            ref={emailRef}
+                            type="email"
+                            autoComplete="email"
+                            inputMode="email"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            required
+                            name={field.name}
+                            value={field.value}
+                            onBlur={field.onBlur}
+                            onChange={(email) => field.onChange(email)}
+                            placeholder="work@email.com"
+                          />
+                        </FormControl>
+                        <FormError role="alert" />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem className="w-full text-left">
+                        <FormLabel>{t("common.password")}</FormLabel>
+                        <FormControl>
+                          <PasswordInput
+                            autoComplete="current-password"
+                            placeholder="*******"
+                            required
+                            name={field.name}
+                            value={field.value}
+                            onBlur={field.onBlur}
+                            onChange={(password) => field.onChange(password)}
+                          />
+                        </FormControl>
+                        <FormError role="alert" />
+                      </FormItem>
+                    )}
+                  />
+                  {passwordResetEnabled && (
+                    <div className="text-right transition-all duration-500 ease-in-out">
+                      <Link
+                        href="/auth/forgot-password"
+                        className="inline-flex min-h-6 items-center rounded-sm py-1 text-sm text-slate-500 hover:text-brand-dark focus-visible:ring-2 focus-visible:ring-brand-dark focus-visible:outline-hidden">
+                        {t("auth.login.forgot_your_password")}
+                      </Link>
+                    </div>
                   )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem className="w-full text-left">
-                      <FormLabel>{t("common.password")}</FormLabel>
-                      <FormControl>
-                        <PasswordInput
-                          autoComplete="current-password"
-                          placeholder="*******"
-                          required
-                          name={field.name}
-                          value={field.value}
-                          onBlur={field.onBlur}
-                          onChange={(password) => field.onChange(password)}
-                        />
-                      </FormControl>
-                      <FormError role="alert" />
-                    </FormItem>
-                  )}
-                />
-                {passwordResetEnabled && (
-                  <div className="text-right transition-all duration-500 ease-in-out">
-                    <Link
-                      href="/auth/forgot-password"
-                      className="inline-flex min-h-6 items-center rounded-sm py-1 text-sm text-slate-500 hover:text-brand-dark focus-visible:ring-2 focus-visible:ring-brand-dark focus-visible:outline-hidden">
-                      {t("auth.login.forgot_your_password")}
-                    </Link>
-                  </div>
-                )}
-              </div>
-            )}
-            {emailAuthEnabled && (
-              <Button
-                type={showLogin ? "submit" : "button"}
-                onClick={
-                  showLogin
-                    ? undefined
-                    : () => {
-                        setShowLogin(true);
-                        // Add a slight delay before focusing the input field to ensure it's visible
-                        setTimeout(() => emailRef.current?.focus(), 100);
-                      }
-                }
-                className="h-11 w-full min-w-0 justify-center sm:h-9"
-                loading={form.formState.isSubmitting}>
-                <span className="truncate">
-                  {totpLogin ? t("common.submit") : t("auth.login.login_with_email")}
-                </span>
-                {lastLoggedInWith && lastLoggedInWith === "Email" ? (
-                  <span className="shrink-0 text-xs opacity-50">{t("auth.last_used")}</span>
-                ) : null}
-              </Button>
-            )}
-          </form>
+                </div>
+              )}
+              {emailAuthEnabled && (
+                <Button
+                  type={showLogin ? "submit" : "button"}
+                  onClick={
+                    showLogin
+                      ? undefined
+                      : () => {
+                          setShowLogin(true);
+                          // Add a slight delay before focusing the input field to ensure it's visible
+                          setTimeout(() => emailRef.current?.focus(), 100);
+                        }
+                  }
+                  className="h-11 w-full min-w-0 justify-center sm:h-9"
+                  loading={form.formState.isSubmitting}>
+                  <span className="truncate">
+                    {totpLogin ? t("common.submit") : t("auth.login.login_with_email")}
+                  </span>
+                  {lastLoggedInWith && lastLoggedInWith === "Email" ? (
+                    <span className="shrink-0 text-xs opacity-50">{t("auth.last_used")}</span>
+                  ) : null}
+                </Button>
+              )}
+            </form>
+          )}
           {isSsoEnabled && (
             <SSOOptions
               googleOAuthEnabled={googleOAuthEnabled}

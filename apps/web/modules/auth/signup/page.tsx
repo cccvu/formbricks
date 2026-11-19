@@ -1,6 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   EMAIL_AUTH_ENABLED,
+  EMAIL_CODE_AUTH_ENABLED,
   EMAIL_VERIFICATION_DISABLED,
   IS_FORMBRICKS_CLOUD,
   IS_TURNSTILE_CONFIGURED,
@@ -14,6 +15,7 @@ import {
 import { verifyInviteToken } from "@/lib/jwt";
 import { findMatchingLocale } from "@/lib/utils/locale";
 import { FormWrapper } from "@/modules/auth/components/form-wrapper";
+import { getEmailCodeSignupRedirectUrl } from "@/modules/auth/signup/lib/email-code-redirect";
 import { getIsValidInviteToken } from "@/modules/auth/signup/lib/invite";
 import { getIsMultiOrgEnabled } from "@/modules/ee/license-check/lib/utils";
 import { getSsoAvailability, toSsoFormProps } from "@/modules/ee/sso/lib/sso-availability";
@@ -26,6 +28,10 @@ export const SignupPage = async ({
 }) => {
   const searchParams = await searchParamsProps;
   const inviteToken = searchParams["inviteToken"] ?? null;
+  // With email code sign-in there is no sign-up form; an invitee signs in and lands on the invite page.
+  if (EMAIL_CODE_AUTH_ENABLED) {
+    redirect(getEmailCodeSignupRedirectUrl({ inviteToken, email: searchParams["email"] }));
+  }
   const [isMultOrgEnabled, ssoAvailability] = await Promise.all([
     getIsMultiOrgEnabled(),
     getSsoAvailability(),

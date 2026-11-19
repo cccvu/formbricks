@@ -6,6 +6,7 @@ export { PasswordResetNotifyEmail } from "../emails/auth/password-reset-notify-e
 export { AccountDeletedEmail } from "../emails/auth/account-deleted-email";
 export { SsoRecoveryFactorsRemovedEmail } from "../emails/auth/sso-recovery-factors-removed-email";
 export { SsoSignInHintEmail } from "../emails/auth/sso-sign-in-hint-email";
+export { SignInCodeEmail } from "../emails/auth/sign-in-code-email";
 export { MemberRetentionNoticeEmail } from "../emails/retention/member-retention-notice-email";
 export {
   AttachmentExportFailedEmail,
@@ -39,6 +40,7 @@ export {
   renderAccountDeletedEmail,
   renderSsoRecoveryFactorsRemovedEmail,
   renderSsoSignInHintEmail,
+  renderSignInCodeEmail,
   renderSurveyRetentionNoticeEmail,
   renderMemberRetentionNoticeEmail,
   renderAttachmentExportReadyEmail,

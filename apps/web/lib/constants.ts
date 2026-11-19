@@ -67,6 +67,8 @@ export const SAML_PATH = "/api/auth/saml/callback";
 
 export const SIGNUP_ENABLED = IS_FORMBRICKS_CLOUD || IS_DEVELOPMENT || E2E_TESTING;
 export const EMAIL_AUTH_ENABLED = env.EMAIL_AUTH_DISABLED !== "1";
+export const EMAIL_CODE_AUTH_ENABLED = env.EMAIL_CODE_AUTH_ENABLED === "1";
+export const INITIAL_ADMIN_EMAIL = env.INITIAL_ADMIN_EMAIL;
 export const INVITE_DISABLED = env.INVITE_DISABLED === "1";
 export const INVITE_RATE_LIMIT_PER_24_HOURS = env.INVITE_RATE_LIMIT_PER_24_HOURS;
 export const EMAIL_RATE_LIMIT_MULTIPLIER = env.EMAIL_RATE_LIMIT_MULTIPLIER;
@@ -102,6 +104,11 @@ export const SMTP_PORT = env.SMTP_PORT;
  * derives from rather than being recomputed per call site.
  */
 export const IS_SMTP_CONFIGURED = Boolean(env.SMTP_HOST && env.SMTP_PORT);
+/** Send through the Amazon SES v2 API (task role / default AWS credential chain) instead of SMTP. */
+export const SES_REGION = env.SES_REGION;
+export const IS_SES_API_CONFIGURED = Boolean(env.SES_REGION);
+/** Whether any mail transport is configured. Prefer this over IS_SMTP_CONFIGURED when gating sends. */
+export const IS_MAILER_CONFIGURED = IS_SES_API_CONFIGURED || IS_SMTP_CONFIGURED;
 export const SMTP_SECURE_ENABLED = env.SMTP_SECURE_ENABLED === "1" || env.SMTP_PORT === "465";
 export const SMTP_USER = env.SMTP_USER;
 export const SMTP_PASSWORD = env.SMTP_PASSWORD;

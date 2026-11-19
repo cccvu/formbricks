@@ -1,7 +1,7 @@
 import "server-only";
 import { APIError } from "better-auth/api";
 import { SIGNUP_DISABLED_ERROR_CODE } from "@formbricks/types/errors";
-import { SIGNUP_ENABLED } from "@/lib/constants";
+import { INITIAL_ADMIN_EMAIL, SIGNUP_ENABLED } from "@/lib/constants";
 import { getIsFreshInstance } from "@/lib/instance/service";
 import { isSignupDomainAllowed } from "@/modules/auth/lib/signup-request-context";
 import { getIsMultiOrgEnabled } from "@/modules/ee/license-check/lib/utils";
@@ -40,13 +40,22 @@ export type TUninvitedSignupAdmission = "open" | "fresh-instance" | "denied";
  * gates, and "allowed" alone cannot tell it apart from open sign-up. Marking on plain "allowed" would
  * write the marker for every Cloud sign-up and collide on the second account ever created.
  */
-export const resolveUninvitedSignupAdmission = async (): Promise<TUninvitedSignupAdmission> => {
+export const resolveUninvitedSignupAdmission = async (email: string): Promise<TUninvitedSignupAdmission> => {
   if (SIGNUP_ENABLED && (await getIsMultiOrgEnabled())) return "open";
+  if (!isInitialAdminEmail(email)) return "denied";
   return (await getIsFreshInstance()) ? "fresh-instance" : "denied";
 };
 
-export const isUninvitedSignupAllowed = async (): Promise<boolean> =>
-  (await resolveUninvitedSignupAdmission()) !== "denied";
+/**
+ * INITIAL_ADMIN_EMAIL narrows the fresh-instance exception to one address, so whoever reaches a new
+ * instance first cannot claim it. Unset keeps the previous behavior (any address). Checked before the
+ * user count, which it makes unnecessary for every other address.
+ */
+const isInitialAdminEmail = (email: string): boolean =>
+  !INITIAL_ADMIN_EMAIL || email.trim().toLowerCase() === INITIAL_ADMIN_EMAIL.trim().toLowerCase();
+
+export const isUninvitedSignupAllowed = async (email: string): Promise<boolean> =>
+  (await resolveUninvitedSignupAdmission(email)) !== "denied";
 
 /**
  * Better Auth's native credential sign-up endpoint. Closed over HTTP since ENG-3988 (`disabledPaths`),
@@ -98,7 +107,8 @@ export const signupPolicyBeforeHandler = async (ctx: AuthHookContext): Promise<v
   // Already gated by createUserAction, which also honours a valid invite — do not re-decide it here.
   if (isSignupDomainAllowed()) return;
 
-  if (!(await isUninvitedSignupAllowed())) {
+  const email = typeof ctx.body?.email === "string" ? ctx.body.email : "";
+  if (!(await isUninvitedSignupAllowed(email))) {
     throw signupDisabledError();
   }
 };

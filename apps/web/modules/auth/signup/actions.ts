@@ -349,6 +349,7 @@ async function handlePostUserCreation(
  * bootstrap marker (ENG-2247).
  */
 async function assertSignupPolicyAllows(
+  email: string,
   inviteToken: string | undefined,
   inviteMatch: InviteMatch
 ): Promise<{ isBootstrapAdmin: boolean }> {
@@ -370,7 +371,7 @@ async function assertSignupPolicyAllows(
   // administrator during fresh-instance setup, who has no invite to present. That predicate is shared
   // with the Better Auth hooks (signup-policy.ts) — writing it out twice is what left Better Auth's
   // native /sign-up/email open after this action was fixed (ENG-2073 → ENG-2293).
-  const admission = await resolveUninvitedSignupAdmission();
+  const admission = await resolveUninvitedSignupAdmission(email);
   if (admission === "denied") {
     throw new InvalidInputError(SIGNUP_DISABLED_ERROR_CODE);
   }
@@ -390,7 +391,7 @@ export const createUserAction = actionClient.inputSchema(ZCreateUserAction).acti
     const inviteToken = parsedInput.inviteToken?.trim() || undefined;
     const inviteMatch = await resolveInviteMatch(inviteToken, parsedInput.email);
 
-    const { isBootstrapAdmin } = await assertSignupPolicyAllows(inviteToken, inviteMatch);
+    const { isBootstrapAdmin } = await assertSignupPolicyAllows(parsedInput.email, inviteToken, inviteMatch);
 
     // Formbricks Cloud only: reject personal/free/disposable email domains before any user is created.
     // Invited users are exempt unless SIGNUP_DOMAIN_CHECK_ON_INVITES is enabled.

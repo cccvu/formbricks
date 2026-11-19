@@ -1,5 +1,5 @@
 import { oauthProviderClient } from "@better-auth/oauth-provider/client";
-import { twoFactorClient } from "better-auth/client/plugins";
+import { emailOTPClient, twoFactorClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 /**
@@ -12,7 +12,7 @@ import { createAuthClient } from "better-auth/react";
  * `signIn.oauth2` no longer exists.
  */
 export const authClient = createAuthClient({
-  plugins: [twoFactorClient(), oauthProviderClient()],
+  plugins: [twoFactorClient(), oauthProviderClient(), emailOTPClient()],
 });
 
 // No `signUp` here: credential sign-up goes through `createUserAction` only. Better Auth's

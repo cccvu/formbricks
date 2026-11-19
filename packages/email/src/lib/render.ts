@@ -1,9 +1,10 @@
-import { render } from "react-email";
+import { render, toPlainText } from "react-email";
 import { AccountDeletedEmail } from "../../emails/auth/account-deleted-email";
 import { DeleteAccountEmail } from "../../emails/auth/delete-account-email";
 import { ForgotPasswordEmail } from "../../emails/auth/forgot-password-email";
 import { NewEmailVerification } from "../../emails/auth/new-email-verification";
 import { PasswordResetNotifyEmail } from "../../emails/auth/password-reset-notify-email";
+import { SignInCodeEmail } from "../../emails/auth/sign-in-code-email";
 import { SsoRecoveryFactorsRemovedEmail } from "../../emails/auth/sso-recovery-factors-removed-email";
 import { SsoSignInHintEmail } from "../../emails/auth/sso-sign-in-hint-email";
 import { VerificationEmail } from "../../emails/auth/verification-email";
@@ -102,6 +103,19 @@ export async function renderSsoSignInHintEmail(
   } & TEmailTemplateLegalProps
 ): Promise<string> {
   return await render(SsoSignInHintEmail(props));
+}
+
+/**
+ * Returns the plain-text part alongside the HTML: a one-time code must stay readable in a client that
+ * shows only text, and the text is derived from the same render so the two cannot disagree.
+ */
+export async function renderSignInCodeEmail(props: {
+  code: string;
+  validityInMinutes: number;
+  t: TFunction;
+}): Promise<{ html: string; text: string }> {
+  const html = await render(SignInCodeEmail(props));
+  return { html, text: toPlainText(html) };
 }
 
 export async function renderSurveyRetentionNoticeEmail(

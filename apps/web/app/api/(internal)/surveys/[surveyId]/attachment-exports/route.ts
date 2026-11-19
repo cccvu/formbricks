@@ -9,7 +9,7 @@ import {
   problemUnprocessableContent,
   successResponse,
 } from "@/app/api/v3/lib/response";
-import { IS_SMTP_CONFIGURED } from "@/lib/constants";
+import { IS_MAILER_CONFIGURED } from "@/lib/constants";
 import { getJobsQueueingConfig } from "@/lib/jobs/config";
 import { getOrganization } from "@/lib/organization/service";
 import { capturePostHogEvent } from "@/lib/posthog";
@@ -68,7 +68,7 @@ export const POST = withV3ApiWrapper({
 
     // Without a worker to build it, without email to deliver the link, or while an online upgrade still
     // has pods that would drop the job, the client falls back to the streaming route.
-    if (!IS_SMTP_CONFIGURED || !getJobsQueueingConfig().enabled || !(await isNewReleaseWorkEnabled())) {
+    if (!IS_MAILER_CONFIGURED || !getJobsQueueingConfig().enabled || !(await isNewReleaseWorkEnabled())) {
       return problemConflict(
         requestId,
         "Background attachment exports are not available right now.",

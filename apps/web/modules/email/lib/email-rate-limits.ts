@@ -119,6 +119,12 @@ export const emailRateLimits: Record<TEmailType, TEmailRateLimit> = {
   account_deletion_notification: {},
   sso_recovery_notification: {},
   sso_sign_in_hint: { recipient: { total: limit(3) } },
+  // A backstop only: the sign-in flow enforces the real caps per address before Better Auth stores a code.
+  // This one is checked AFTER the code is stored, so a refusal here replaces the owner's mailed code with
+  // one nobody receives. It must therefore sit above anything the sign-in caps can let through in a
+  // calendar day: 2 pools (shared, trusted device) x 10 a day, and a 24-hour window that starts at the
+  // first send can straddle two calendar days, so up to 40. `email-rate-limits.test.ts` pins this.
+  sign_in_code: { recipient: { total: limit(50, DAY) } },
   data_retention_notice: {},
   // One per export the user started, and starting one is already rate-limited per user.
   attachment_export: {},

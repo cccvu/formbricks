@@ -17,6 +17,7 @@ vi.mock("@/modules/ee/license-check/lib/utils", () => ({ getIsMultiOrgEnabled: v
 
 const constantsOverrides = vi.hoisted(() => ({ SIGNUP_ENABLED: true }));
 vi.mock("@/lib/constants", () => ({
+  INITIAL_ADMIN_EMAIL: undefined,
   get SIGNUP_ENABLED() {
     return constantsOverrides.SIGNUP_ENABLED;
   },

@@ -62,6 +62,8 @@ export const getSignInAuthMethod = (path: string | undefined): string | null => 
   // The SSO-recovery magic-link sign-in also creates a session (verify-before-link), so audit it as
   // "sso" — the unified signedIn trail should capture every sign-in.
   if (path === "/sso-recovery/sign-in") return "sso";
+  // Email-code sign-in (EMAIL_CODE_AUTH_ENABLED): a one-time code from the mailbox.
+  if (path === "/sign-in/email-otp") return "email_code";
   return null;
 };
 

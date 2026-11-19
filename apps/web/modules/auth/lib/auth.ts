@@ -15,6 +15,7 @@ import {
   AUTH_TRUSTED_ORIGINS,
   AUTH_URL,
   EMAIL_AUTH_ENABLED,
+  EMAIL_CODE_AUTH_ENABLED,
   EMAIL_VERIFICATION_DISABLED,
   PASSWORD_RESET_DISABLED,
   PASSWORD_RESET_TOKEN_LIFETIME_MINUTES,
@@ -40,6 +41,8 @@ import { auditPasswordReset, betterAuthLogger, signInAuditPlugin } from "./bette
 import { requirePasswordResetEnabledBeforeHandler } from "./better-auth-password-reset-gate";
 import { healCredentialAccountIssuerBeforeHandler } from "./credential-issuer-heal";
 import { restrictDashboardViewerConsentBeforeHandler } from "./dashboard-viewer-oauth-consent";
+import { rejectEmailCodeSessionForIneligibleUser, withEmailCodeUserCreate } from "./email-code/guards";
+import { emailCodePlugin } from "./email-code/plugin";
 import { getMcpOauthProviderOptions } from "./mcp-oauth-provider-options";
 import { revokeOAuthConsentBeforeHandler } from "./oauth-grant-revocation";
 import { getAuthIssuerUrl, getMcpResourceUrl } from "./oauth-urls";
@@ -92,6 +95,10 @@ export const getUserLocale = async (userId: string): Promise<TUserLocale> => {
  * credential sign-in + sole-owner-deletion failure audits and the signedIn-success / lastLoginAt /
  * analytics / Sentry / logger wiring are all live in better-auth-observability.ts.
  */
+// The SSO module's user-create hook is also the credential sign-up backstop; email-code sign-in wraps it.
+const ssoUserCreateBefore = ssoDatabaseHooks.user?.create?.before;
+if (!ssoUserCreateBefore) throw new Error("ssoDatabaseHooks.user.create.before must be defined");
+
 export const auth = betterAuth({
   appName: "Formbricks",
   // Resolved in lib/constants.ts, which documents the BETTER_AUTH_* / NEXTAUTH_* alias. Passing it
@@ -242,7 +249,7 @@ export const auth = betterAuth({
     // paths that DO propagate (resend, sign-in resend) fail loudly instead of claiming success.
     // Deliberately NOT surfaced in the sign-up response: that response must not vary by what happened to
     // one address, or it becomes an account-existence oracle (ENG-2099). The verification-requested
-    // screen derives its "nothing was sent" state from IS_SMTP_CONFIGURED instead.
+    // screen derives its "nothing was sent" state from IS_MAILER_CONFIGURED instead.
     sendVerificationEmail: async ({ user, url }) => {
       const { sendVerificationLinkEmail } = await import("@/modules/email");
       try {
@@ -351,9 +358,22 @@ export const auth = betterAuth({
   // `signInAuditPlugin`, the activity by `lastActivePlugin`.
   databaseHooks: {
     ...ssoDatabaseHooks,
+    // Accounts created by email-code sign-in get the invite grant and a display name; everything else
+    // passes straight through to the SSO / credential-backstop hook. See email-code/guards.ts.
+    user: {
+      ...ssoDatabaseHooks.user,
+      create: {
+        ...ssoDatabaseHooks.user?.create,
+        before: withEmailCodeUserCreate(ssoUserCreateBefore),
+      },
+    },
     session: {
       create: {
-        before: rejectInactiveUserOnSessionCreate,
+        before: async (session, context) => {
+          await rejectInactiveUserOnSessionCreate(session, context);
+          // An email code never signs in a 2FA or SSO account (no-op on every other path).
+          await rejectEmailCodeSessionForIneligibleUser(session, context);
+        },
       },
       update: {
         after: recordActivityOnSessionUpdate,
@@ -433,6 +453,11 @@ export const auth = betterAuth({
       // default global limit, ~100/10s, is only a flood guard). The callback gets a modest defensive cap.
       "/delete-user": { window: 3600, max: 5 },
       "/delete-user/callback": { window: 60, max: 5 },
+      // Email-code sign-in (EMAIL_CODE_AUTH_ENABLED): per-IP flood guards only, sized for many users behind
+      // one NAT. The real limits are per address and always on (email-code/limits.ts). These replace the
+      // plugin's 3/60s and core's `/sign-in*` 3/10s, which would lock out a shared office IP.
+      "/email-otp/send-verification-otp": { window: 900, max: 300 },
+      "/sign-in/email-otp": { window: 60, max: 60 },
     },
   },
 
@@ -489,6 +514,10 @@ export const auth = betterAuth({
       totpOptions: { digits: 6, period: 30 },
       backupCodeOptions: { amount: 10, length: 10, storeBackupCodes: "encrypted" },
     }),
+    // Sign in with a code sent by email (EMAIL_CODE_AUTH_ENABLED). Not mounted at all when off. Ahead of
+    // oauthProvider() so a pending MCP authorization only ever resumes with a session this plugin's
+    // guards allowed (2FA and SSO accounts get none: email-code/guards.ts).
+    ...(EMAIL_CODE_AUTH_ENABLED ? [emailCodePlugin()] : []),
     // Options extracted to mcp-oauth-provider-options.ts so the DCR/authorize scope semantics are
     // integration-testable against a throwaway Better Auth instance.
     oauthProvider(getMcpOauthProviderOptions()),

@@ -38,8 +38,8 @@ describe("verification link helpers", () => {
   });
 
   // ENG-2099: nothing about what happened to one address may ride along in this path. The
-  // verification-requested page decides its "we couldn't send it" copy from IS_SMTP_CONFIGURED, which is
-  // the same for every visitor — a per-sign-up flag here would have made the URL an account-existence
+  // verification-requested page decides its "we couldn't send it" copy from IS_MAILER_CONFIGURED, which
+  // is the same for every visitor — a per-sign-up flag here would have made the URL an account-existence
   // signal, since a send is only ever attempted for an address that was actually created.
   test("carries nothing beyond the token, callback URL, and purpose", () => {
     const path = buildVerificationRequestedPath({

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { logger } from "@formbricks/logger";
 import { TooManyRequestsError } from "@formbricks/types/errors";
+import { EMAIL_CODE_SEND_LIMITS } from "@/modules/auth/lib/email-code/constants";
 import { rateLimitConfigs } from "@/modules/core/rate-limit/rate-limit-configs";
 import { ZRateLimitConfig } from "@/modules/core/rate-limit/types/rate-limit";
 import {
@@ -129,10 +130,27 @@ describe("emailRateLimits", () => {
         "email_change_verification",
         "email_verification",
         "password_reset",
+        "sign_in_code",
         "sso_recovery_verification",
         "sso_sign_in_hint",
       ].sort()
     );
+  });
+
+  // The sign-in flow stores a new code before this limiter runs, so a refusal here would leave the owner
+  // with a code nobody received (the rotation lockout). The backstop must exceed what the flow's own caps
+  // let through in one calendar day: each pool's daily window can straddle two calendar days.
+  test("keeps the sign-in code backstop above everything the sign-in caps let through in a day", () => {
+    const pools = 2; // shared + trusted device
+    const dailySendCap = Math.min(
+      ...EMAIL_CODE_SEND_LIMITS.filter(({ windowSeconds }) => windowSeconds <= 24 * 60 * 60).map(
+        ({ windowSeconds, max }) => max * Math.ceil((24 * 60 * 60) / windowSeconds)
+      )
+    );
+    const backstop = emailRateLimits.sign_in_code.recipient?.total;
+
+    expect(backstop?.interval).toBe(24 * 60 * 60);
+    expect(backstop?.allowedPerInterval).toBeGreaterThan(pools * 2 * dailySendCap);
   });
 });
 

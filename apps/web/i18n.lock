@@ -37,6 +37,7 @@ checksums:
     auth/invite/go_to_app: 896d0441384dcd2bfb3b23d61ff1944d
     auth/invite/happy_to_have_you: 3ab743aad0601ae670a5240d90205cd9
     auth/invite/happy_to_have_you_description: e65f70d078738f7a74759e90195de920
+    auth/invite/happy_to_have_you_sign_in_description: a7428b20660aafa84d39fc84f25120b0
     auth/invite/invite_expired: aca6bfddee2363c588404e13f9013107
     auth/invite/invite_expired_description: 70d58711c143a297c43f925fa8d1ed19
     auth/invite/invite_not_found: fe5acb3772bf4fe03ac3171ecb959e08
@@ -47,6 +48,18 @@ checksums:
     auth/last_used: 9049bf77c57c92b7a5a760ba2a40128c
     auth/login/backup_code: 870711a6df11ae55366d018255b466cf
     auth/login/create_an_account: bc53a57281d2701563f94f3169518028
+    auth/login/email_code/code_format: 023b42669830e7598e077b8176e0954c
+    auth/login/email_code/code_label: ccb3083a61949a88bb1258a93912c733
+    auth/login/email_code/code_resent: 7a054b0e290d1143d91eaba775492ae9
+    auth/login/email_code/code_sent_description: 9f1834bc76423678d99fbf7f81104ce4
+    auth/login/email_code/invalid_code: a866561473dde7aa131638fe674ccc01
+    auth/login/email_code/resend_code: b325af34ff383c5eb34e624617fb450a
+    auth/login/email_code/resend_code_in: ff98bf44e542fe0308e60c00e7a58e79
+    auth/login/email_code/send_code: 3604a3bd89c33a995b7dc7c695772947
+    auth/login/email_code/send_failed: 3c5c7785ef7348de20cce4e6431c543a
+    auth/login/email_code/sign_in: cb8757c7450e17de1e226e82fb0fa4a2
+    auth/login/email_code/too_many_attempts: 57a42fa3d9863bc98eafd1a3d1534e21
+    auth/login/email_code/use_a_different_email: e8ae4981a38f92132bde55f395e3756a
     auth/login/email_verified_sign_in_description: 3e5455fff9e03b7d43dd8c23a787e496
     auth/login/email_verified_sign_in_title: f960899104c4e22c27ab699272b2bbc1
     auth/login/enter_your_backup_code: f2a6905ea0e8d2b4093b5773d72df88b
@@ -772,6 +785,10 @@ checksums:
     emails/retention_notice_email_view_settings: 13e113cbbb92df3b06ede52bb28a2b63
     emails/schedule_your_meeting: 01683323bd7373560cd2cb2737dbaf06
     emails/select_a_date: 521e4a705800da06d091fde3e801ce02
+    emails/sign_in_code_email_did_not_request: af3a0cb5fac36f4391b3952d13d17ce0
+    emails/sign_in_code_email_expiry: 47a2229806a91fcb82c6597efdb3fd9e
+    emails/sign_in_code_email_heading: 3d02ef5a5156defc6983d8486d2b2491
+    emails/sign_in_code_email_subject: 3d02ef5a5156defc6983d8486d2b2491
     emails/sso_recovery_factors_removed_email_api_keys: 80c5ebff50c6d809bd5bac1bf67e8da7
     emails/sso_recovery_factors_removed_email_did_not_expect: 30209a930b9cd3dcc05b2fc8eb5e5f0f
     emails/sso_recovery_factors_removed_email_heading: 7b98fce670cc45550cc9de3913a56ec1
