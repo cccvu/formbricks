@@ -139,7 +139,7 @@ export const createUser = (
   });
 
 /** An organization with a pending invite for `email` (the instance is then no longer fresh). */
-export const createInvite = async (email: string) => {
+export const createInvite = async (email: string, expiresAt = new Date(Date.now() + 86_400_000)) => {
   const creator = await createUser(`inviter-${Date.now()}@example.com`);
   const organization = await prisma.organization.create({ data: { name: "Invite Org" } });
   return prisma.invite.create({
@@ -147,7 +147,7 @@ export const createInvite = async (email: string) => {
       email,
       organizationId: organization.id,
       creatorId: creator.id,
-      expiresAt: new Date(Date.now() + 86_400_000),
+      expiresAt,
     },
   });
 };

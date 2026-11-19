@@ -1,8 +1,10 @@
 import "server-only";
 import type { BetterAuthOptions } from "better-auth";
 import { APIError, isAPIError } from "better-auth/api";
+import { z } from "zod";
 import { prisma } from "@formbricks/database";
 import { logger } from "@formbricks/logger";
+import { normalizeUserName } from "@formbricks/types/user";
 import { EMAIL_AUTH_ENABLED } from "@/lib/constants";
 import type { AuthHookContext } from "@/modules/ee/sso/lib/better-auth-hooks";
 import { hasPendingInviteForEmail } from "./admission";
@@ -60,9 +62,15 @@ const handleSendBefore = async (ctx: AuthHookContext) => {
   const body = assertBodyKeys(ctx, EMAIL_CODE_SEND_BODY_KEYS);
   if (body.type !== "sign-in") throw new APIError("BAD_REQUEST", { message: "Invalid OTP type" });
   if (typeof body.email !== "string") throw new APIError("BAD_REQUEST", { message: "Invalid request body" });
+  // Better Auth's own canonical form and format check (`email.toLowerCase()`, then `z.email()`). An
+  // address it would reject goes straight to it, so it answers INVALID_EMAIL for EVERY such address
+  // before any lookup. Deciding admission on a looser form (say, trimmed) would make that 400 appear only
+  // for admitted addresses, and so reveal which addresses have an account or invite.
+  const email = body.email.toLowerCase();
+  if (!z.email().safeParse(email).success) return;
   const startedAt = Date.now();
   markEmailCodeSendStart(ctx.request, startedAt);
-  if (await shouldSendEmailCode(body.email, ctx)) return; // Better Auth stores a new code and mails it.
+  if (await shouldSendEmailCode(email, ctx)) return; // Better Auth stores a new code and mails it.
   // Not admitted, or over its caps: answer exactly as a real send does, WITHOUT letting Better Auth
   // store a new code. Rotating here would let anyone kill an owner's emailed code by asking for another.
   await padEmailCodeSendToFloor(startedAt);
@@ -156,9 +164,18 @@ type SessionCreateBefore = NonNullable<
   NonNullable<NonNullable<DatabaseHooks["session"]>["create"]>["before"]
 >;
 
-/** A display name for a code-created account: the address's local part, which the user can change. */
+/**
+ * A display name for a code-created account, which the user can change: the address's local part with
+ * `. _ +` read as word separators, run through the shared `normalizeUserName` so it always passes
+ * `ZUserName` (a raw `first_last` or `a+tag` would make the user's first profile save fail).
+ */
 export const deriveNameFromEmail = (email: string): string =>
-  normalizeEmail(email).split("@")[0].slice(0, 64) || "User";
+  normalizeUserName(
+    normalizeEmail(email)
+      .split("@")[0]
+      .replaceAll(/[._+]+/g, " ")
+      .slice(0, 64)
+  ) || "User";
 
 /**
  * Wraps the existing `user.create.before` (which, for a non-SSO creation, runs the credential sign-up

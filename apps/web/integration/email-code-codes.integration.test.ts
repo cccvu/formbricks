@@ -247,6 +247,25 @@ describe("email-code sign-in: nothing depends on the address", () => {
     expect(mailedTo().sort()).toEqual(["invited@example.com", OWNER]);
   });
 
+  // Better Auth refuses a malformed address with a fast 400 INVALID_EMAIL. That must not depend on whether
+  // the address (once trimmed or unescaped) has an account: every malformed address gets it, unlooked-up.
+  test("a malformed address gets the same refusal whether or not it names an account", async () => {
+    const pairs = [
+      [` ${OWNER}`, " unknown@example.com"],
+      [`${OWNER} `, "unknown@example.com "],
+      ["%@example.com", "%@unknown.example.com"],
+    ];
+    for (const [known, unknown] of pairs) {
+      const knownResult = await snapshot(await sendCode(known));
+      const unknownResult = await snapshot(await sendCode(unknown));
+      expect(knownResult).toEqual(unknownResult);
+      expect(knownResult.status).toBe(400);
+      expect(knownResult.body).toContain("INVALID_EMAIL");
+    }
+    expect(sendSignInCodeEmail).not.toHaveBeenCalled();
+    expect(await (await getRedis()).keys("verification:*")).toEqual([]);
+  });
+
   test("a wrong code reads the same for a known and an unknown address", async () => {
     const otp = await freshCode();
     const known = await snapshot(await signIn(OWNER, wrongCode(otp)));

@@ -3,11 +3,22 @@ import { prisma } from "@formbricks/database";
 import { resolveUninvitedSignupAdmission } from "@/modules/auth/lib/signup-policy";
 import { normalizeEmail } from "./tokens";
 
-/** A pending invite is one that has not been accepted (accepting deletes it) and has not expired. */
+/**
+ * Escapes the LIKE metacharacters (`\`, `%`, `_`). Prisma compiles `equals` + `mode: "insensitive"` to
+ * Postgres `ILIKE` without escaping, so an address such as `j_oe@x.com` would otherwise match an invite
+ * for `jdoe@x.com`, and `%@x.com` would match every invite on the domain.
+ */
+export const escapeLikePattern = (value: string): string => value.replaceAll(/[\\%_]/g, String.raw`\$&`);
+
+/**
+ * A pending invite is one that has not been accepted (accepting deletes it) and has not expired. Invite
+ * addresses are stored as typed, so the match is case-insensitive, but it is an exact match: never a
+ * pattern.
+ */
 export const hasPendingInviteForEmail = async (email: string): Promise<boolean> => {
   const count = await prisma.invite.count({
     where: {
-      email: { equals: normalizeEmail(email), mode: "insensitive" },
+      email: { equals: escapeLikePattern(normalizeEmail(email)), mode: "insensitive" },
       expiresAt: { gt: new Date() },
     },
   });
@@ -22,10 +33,14 @@ export const hasPendingInviteForEmail = async (email: string): Promise<boolean> 
  *    sign in at their IdP; a 2FA account would be refused at session creation anyway.
  *  - No account: a pending invite for this address, or the instance's own uninvited-sign-up policy
  *    (fresh instance + INITIAL_ADMIN_EMAIL, or open sign-up).
+ *
+ * The User lookup is an exact match on the lowercased address, as Better Auth stores and finds users
+ * (`findUserByEmail`), and as `getUserByEmail` does: a case-insensitive match could admit an address
+ * that Better Auth's sign-in then does not find.
  */
 export const isEmailCodeRecipientAdmitted = async (email: string): Promise<boolean> => {
   const user = await prisma.user.findFirst({
-    where: { email: { equals: normalizeEmail(email), mode: "insensitive" } },
+    where: { email: normalizeEmail(email) },
     select: { isActive: true, identityProvider: true, twoFactorEnabled: true },
   });
   if (user) return user.isActive && user.identityProvider === "email" && !user.twoFactorEnabled;

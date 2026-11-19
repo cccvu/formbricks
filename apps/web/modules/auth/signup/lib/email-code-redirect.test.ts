@@ -1,8 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  getEmailCodeSetupSignupRedirectUrl,
-  getEmailCodeSignupRedirectUrl,
-} from "@/modules/auth/signup/lib/email-code-redirect";
+import { getEmailCodeSignupRedirectUrl } from "@/modules/auth/signup/lib/email-code-redirect";
 
 const parse = (url: string) => new URL(url, "https://app.example.com");
 
@@ -37,13 +34,5 @@ describe("getEmailCodeSignupRedirectUrl", () => {
 
     expect(params.get("callbackUrl")).toBe("/invite?token=tok");
     expect(params.get("email")).toBe("ada+x@example.com");
-  });
-});
-
-describe("getEmailCodeSetupSignupRedirectUrl", () => {
-  test("continues setup at organization creation after sign-in", () => {
-    expect(getEmailCodeSetupSignupRedirectUrl()).toBe(
-      "/auth/login?callbackUrl=%2Fsetup%2Forganization%2Fcreate"
-    );
   });
 });

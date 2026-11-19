@@ -105,6 +105,47 @@ describe("email-code sign-in: account creation", () => {
     expect(await findUser("revoked@example.com")).toBeNull();
   });
 
+  test("an invite is matched exactly, never as a LIKE pattern", async () => {
+    await createInvite("jdoe@example.com");
+
+    for (const lookalike of ["j_oe@example.com", "____@example.com", "jdo_@example.com"]) {
+      expect((await sendCode(lookalike)).status).toBe(200);
+      const otp = await seedCode(lookalike);
+      await expectRefused(await signIn(lookalike, otp));
+      expect(await findUser(lookalike)).toBeNull();
+    }
+    expect(sendSignInCodeEmail).not.toHaveBeenCalled();
+  });
+
+  test("an invited address with LIKE metacharacters still matches itself, and gets a valid display name", async () => {
+    await createInvite("first_last@example.com");
+
+    await sendCode("first_last@example.com");
+    expect(sendSignInCodeEmail).toHaveBeenCalledOnce();
+    expect((await signIn("first_last@example.com", lastMailedCode())).status).toBe(200);
+    expect(await findUser("first_last@example.com")).toMatchObject({ name: "first last" });
+  });
+
+  test("an invite stored with capitals admits the address in any case", async () => {
+    await createInvite("Mixed.Case@Example.com");
+
+    await sendCode("MIXED.case@example.com");
+    expect(sendSignInCodeEmail).toHaveBeenCalledOnce();
+    expect((await signIn("mixed.case@example.com", lastMailedCode())).status).toBe(200);
+    expect(await findUser("mixed.case@example.com")).not.toBeNull();
+  });
+
+  test("an expired invite admits nothing: no mail, and a valid code creates no account", async () => {
+    await createInvite("expired@example.com", new Date(Date.now() - 1000));
+
+    await sendCode("expired@example.com");
+    expect(sendSignInCodeEmail).not.toHaveBeenCalled();
+
+    const otp = await seedCode("expired@example.com");
+    await expectRefused(await signIn("expired@example.com", otp));
+    expect(await findUser("expired@example.com")).toBeNull();
+  });
+
   test("fresh instance: INITIAL_ADMIN_EMAIL (any case) becomes the bootstrap admin", async () => {
     await sendCode("Admin@Example.com");
     expect(sendSignInCodeEmail).toHaveBeenCalledOnce();

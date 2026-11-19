@@ -1,8 +1,9 @@
 import { APIError } from "better-auth/api";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { ZUserName } from "@formbricks/types/user";
 import type { AuthHookContext } from "@/modules/ee/sso/lib/better-auth-hooks";
 import { EMAIL_CODE_SEND_PATH, EMAIL_CODE_SIGN_IN_PATH } from "./constants";
-import { emailCodeAfterHandler, emailCodeBeforeHandler } from "./guards";
+import { deriveNameFromEmail, emailCodeAfterHandler, emailCodeBeforeHandler } from "./guards";
 import { consumeEmailCodeVerifyQuota } from "./limits";
 import { createEmailOTPBase } from "./plugin";
 import { markEmailCodeSendStart, padEmailCodeSendToFloor, shouldSendEmailCode } from "./send";
@@ -113,6 +114,24 @@ describe("emailCodeBeforeHandler", () => {
     expect(padEmailCodeSendToFloor).not.toHaveBeenCalled();
   });
 
+  // Better Auth lowercases the address and then rejects anything `z.email()` refuses. Deciding admission on
+  // any looser form would make that INVALID_EMAIL appear only for admitted addresses (an account oracle).
+  test.each([" person@example.com", "person@example.com ", "%@example.com", "per son@example.com", ""])(
+    "hands the malformed address %j straight to Better Auth without looking it up",
+    async (email) => {
+      const ctx = hookCtx({ path: EMAIL_CODE_SEND_PATH, body: { ...sendBody, email } });
+      await expect(emailCodeBeforeHandler(ctx)).resolves.toBeUndefined();
+      expect(shouldSendEmailCode).not.toHaveBeenCalled();
+      expect(markEmailCodeSendStart).not.toHaveBeenCalled();
+    }
+  );
+
+  test("decides admission on the address exactly as Better Auth stores it (lowercased)", async () => {
+    const ctx = hookCtx({ path: EMAIL_CODE_SEND_PATH, body: { ...sendBody, email: "Person@Example.COM" } });
+    await emailCodeBeforeHandler(ctx);
+    expect(shouldSendEmailCode).toHaveBeenCalledExactlyOnceWith("person@example.com", ctx);
+  });
+
   test("answers a refused send itself, after the floor, so Better Auth never stores a new code", async () => {
     vi.mocked(shouldSendEmailCode).mockResolvedValueOnce(false);
     const result = await emailCodeBeforeHandler(hookCtx({ path: EMAIL_CODE_SEND_PATH, body: sendBody }));
@@ -203,6 +222,22 @@ describe("emailCodeAfterHandler", () => {
     ).resolves.toBeUndefined();
   });
 
+  test.each([
+    ["a wrong code", () => upstreamInvalidOtp()],
+    ["a burned code", () => APIError.from("FORBIDDEN", createEmailOTPBase().$ERROR_CODES.TOO_MANY_ATTEMPTS)],
+  ])("never marks the browser as a trusted device after %s", async (_label, makeError) => {
+    const request = new Request("https://app.example.test/api/auth/sign-in/email-otp", { method: "POST" });
+    const ctx = hookCtx({ path: EMAIL_CODE_SIGN_IN_PATH, body: signInBody, returned: makeError(), request });
+    await emailCodeAfterHandler(ctx);
+    expect(ctx.setCookie).not.toHaveBeenCalled();
+  });
+
+  test("never marks the browser as a trusted device when no session was created", async () => {
+    const ctx = hookCtx({ path: EMAIL_CODE_SIGN_IN_PATH, body: signInBody, returned: { token: null } });
+    await emailCodeAfterHandler(ctx);
+    expect(ctx.setCookie).not.toHaveBeenCalled();
+  });
+
   test("marks the browser as a trusted device for the address after a successful sign-in", async () => {
     const ctx = hookCtx({ path: EMAIL_CODE_SIGN_IN_PATH, body: signInBody, newSession: { session: {} } });
     await emailCodeAfterHandler(ctx);
@@ -211,5 +246,19 @@ describe("emailCodeAfterHandler", () => {
       expect.any(String),
       expect.objectContaining({ httpOnly: true, path: "/" })
     );
+  });
+});
+
+describe("deriveNameFromEmail", () => {
+  test.each([
+    ["first.last@example.com", "first last"],
+    ["first_last@example.com", "first last"],
+    ["a+tag@example.com", "a tag"],
+    ["Jane@Example.com", "jane"],
+    ["!!!@example.com", "User"],
+  ])("derives a valid display name from %s", (email, expected) => {
+    const name = deriveNameFromEmail(email);
+    expect(name).toBe(expected);
+    expect(ZUserName.safeParse(name).success).toBe(true);
   });
 });

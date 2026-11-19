@@ -1133,4 +1133,69 @@ describe("env", () => {
       });
     });
   });
+
+  describe("email code sign-in configuration", () => {
+    const emailCodeEnv = {
+      EMAIL_CODE_AUTH_ENABLED: "1",
+      EMAIL_AUTH_DISABLED: "1",
+      PASSWORD_RESET_DISABLED: "1",
+      SES_REGION: "us-east-1",
+      SMTP_HOST: undefined,
+      SMTP_PORT: undefined,
+      MAIL_FROM: "forms@example.com",
+      INITIAL_ADMIN_EMAIL: undefined,
+    };
+
+    test("loads a complete configuration", async () => {
+      setTestEnv(emailCodeEnv);
+
+      const { env } = await import("./env");
+
+      expect(env.EMAIL_CODE_AUTH_ENABLED).toBe("1");
+      expect(env.SES_REGION).toBe("us-east-1");
+    });
+
+    test("accepts SMTP as the mailer instead of SES", async () => {
+      setTestEnv({ ...emailCodeEnv, SES_REGION: undefined, SMTP_HOST: "smtp.example.com", SMTP_PORT: "587" });
+
+      await expect(import("./env")).resolves.toBeDefined();
+    });
+
+    test.each([
+      ["no mailer", { SES_REGION: undefined }, "EMAIL_CODE_AUTH_ENABLED"],
+      [
+        "an SMTP host without a port",
+        { SES_REGION: undefined, SMTP_HOST: "smtp.example.com" },
+        "EMAIL_CODE_AUTH_ENABLED",
+      ],
+      ["no sender", { MAIL_FROM: undefined }, "MAIL_FROM"],
+      ["password sign-in left on", { EMAIL_AUTH_DISABLED: undefined }, "EMAIL_AUTH_DISABLED"],
+      ["password sign-in explicitly on", { EMAIL_AUTH_DISABLED: "0" }, "EMAIL_AUTH_DISABLED"],
+      ["password reset left on", { PASSWORD_RESET_DISABLED: "0" }, "PASSWORD_RESET_DISABLED"],
+      ["a malformed SES region", { SES_REGION: "US East" }, "SES_REGION"],
+      ["a malformed initial admin address", { INITIAL_ADMIN_EMAIL: "not-an-email" }, "INITIAL_ADMIN_EMAIL"],
+    ])("refuses to boot with %s", async (_label, overrides, variable) => {
+      setTestEnv({ ...emailCodeEnv, ...overrides });
+
+      await expect(import("./env")).rejects.toThrow(variable);
+    });
+
+    test("requires a sender for the SES mailer even with email code sign-in off", async () => {
+      setTestEnv({ ...emailCodeEnv, EMAIL_CODE_AUTH_ENABLED: undefined, MAIL_FROM: undefined });
+
+      await expect(import("./env")).rejects.toThrow("MAIL_FROM");
+    });
+
+    test("does not require the password switches when email code sign-in is off", async () => {
+      setTestEnv({
+        ...emailCodeEnv,
+        EMAIL_CODE_AUTH_ENABLED: undefined,
+        EMAIL_AUTH_DISABLED: undefined,
+        PASSWORD_RESET_DISABLED: undefined,
+        SES_REGION: undefined,
+      });
+
+      await expect(import("./env")).resolves.toBeDefined();
+    });
+  });
 });

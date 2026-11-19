@@ -569,8 +569,8 @@ const validateSesConfiguration = (values: TSesConfigurationEnv, ctx: z.Refinemen
   }
 };
 
-// The SES API mailer needs a sender. Email-code sign-in replaces passwords, so it must have a working mailer and must not leave a password
-// recovery path open beside it.
+// The SES API mailer needs a sender. Email-code sign-in replaces passwords, so it must have a working mailer and must not leave password
+// sign-in or a password recovery path open beside it.
 const ZEmailCodeAuthEnv = z.object({
   EMAIL_CODE_AUTH_ENABLED: z.enum(["1", "0"]).optional(),
   EMAIL_AUTH_DISABLED: z.enum(["1", "0"]).optional(),
@@ -597,11 +597,20 @@ const validateEmailCodeAuthConfiguration = (
       "EMAIL_CODE_AUTH_ENABLED=1 requires a mailer (SES_REGION, or SMTP_HOST and SMTP_PORT) and MAIL_FROM"
     );
   }
-  if (values.EMAIL_AUTH_DISABLED === "1" && values.PASSWORD_RESET_DISABLED !== "1") {
+  // The flag replaces the password form in the UI (including its two-factor step), so leaving password
+  // sign-in on beside it would keep `/sign-in/email` accepting passwords with no UI and no 2FA prompt.
+  if (values.EMAIL_AUTH_DISABLED !== "1") {
+    addEnvIssue(
+      ctx,
+      "EMAIL_AUTH_DISABLED",
+      "EMAIL_AUTH_DISABLED=1 is required when EMAIL_CODE_AUTH_ENABLED=1"
+    );
+  }
+  if (values.PASSWORD_RESET_DISABLED !== "1") {
     addEnvIssue(
       ctx,
       "PASSWORD_RESET_DISABLED",
-      "PASSWORD_RESET_DISABLED=1 is required when EMAIL_CODE_AUTH_ENABLED=1 and EMAIL_AUTH_DISABLED=1"
+      "PASSWORD_RESET_DISABLED=1 is required when EMAIL_CODE_AUTH_ENABLED=1"
     );
   }
 };

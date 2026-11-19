@@ -3,6 +3,7 @@
  * login URL a sign-up page redirects to, carrying over where the user was headed.
  */
 
+/** Where the fresh-instance `/setup/signup` code form continues to once the first admin is signed in. */
 export const SETUP_ORGANIZATION_CREATE_PATH = "/setup/organization/create";
 
 const buildLoginUrl = (params: Record<string, string | undefined>): string => {
@@ -29,7 +30,3 @@ export const getEmailCodeSignupRedirectUrl = ({
       : undefined,
     email: email ?? undefined,
   });
-
-// The fresh-instance `/setup/signup` → sign in, then continue setup by creating the organization.
-export const getEmailCodeSetupSignupRedirectUrl = (): string =>
-  buildLoginUrl({ callbackUrl: SETUP_ORGANIZATION_CREATE_PATH });
