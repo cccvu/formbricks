@@ -127,6 +127,22 @@ describe("signup intent token", () => {
   test("cookie name is namespaced so it cannot collide with a Better Auth cookie", () => {
     expect(SIGNUP_INTENT_COOKIE_NAME).toBe("formbricks.signup_intent");
   });
+
+  test("on https the cookie is a __Host- cookie, so a sibling subdomain cannot plant one", async () => {
+    vi.doMock("@/lib/env", () => ({ env: { WEBAPP_URL: "https://forms.example.test" } }));
+    vi.resetModules();
+    try {
+      const https = await import("./signup-intent");
+
+      expect(https.SIGNUP_INTENT_COOKIE_NAME).toBe("__Host-formbricks.signup_intent");
+      // What a browser requires before it stores a `__Host-` cookie.
+      expect(https.SIGNUP_INTENT_COOKIE_OPTIONS).toMatchObject({ secure: true, path: "/" });
+      expect(https.SIGNUP_INTENT_COOKIE_OPTIONS).not.toHaveProperty("domain");
+    } finally {
+      vi.doMock("@/lib/env", () => ({ env: { WEBAPP_URL: "http://localhost:3000" } }));
+      vi.resetModules();
+    }
+  });
 });
 
 describe("classifySignupIntent", () => {

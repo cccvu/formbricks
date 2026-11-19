@@ -19,9 +19,12 @@ vi.mock("@formbricks/database", () => ({
   },
 }));
 
+// An https deployment, so the session cookie is `__Host-formbricks.session_token` (auth-cookies.ts).
 vi.mock("@/lib/env", () => ({
-  env: { BETTER_AUTH_SECRET: TEST_SECRET },
+  env: { BETTER_AUTH_SECRET: TEST_SECRET, BETTER_AUTH_URL: "https://forms.example.test" },
 }));
+
+const SESSION_COOKIE = "__Host-formbricks.session_token";
 
 // Mirror better-call's serializeSignedCookie: `${token}.${base64(HMAC-SHA256(token, secret))}`.
 const sign = (token: string, secret = TEST_SECRET): string =>
@@ -48,13 +51,32 @@ describe("proxy-session", () => {
   });
 
   test("extracts the verified session token from a signed Better Auth cookie", () => {
-    const request = createRequest({ "__Secure-formbricks.session_token": sign("secure-token") });
+    const request = createRequest({ [SESSION_COOKIE]: sign("secure-token") });
     expect(getSessionTokenFromRequest(request)).toBe("secure-token");
   });
 
+  // Cookie tossing: a sibling subdomain can set these names for this host, with a validly signed value
+  // (its own session). Better Auth ignores them, so the proxy must too, on both read paths.
+  test.each(["formbricks.session_token", "__Secure-formbricks.session_token"])(
+    "ignores a validly signed %s cookie, which a sibling subdomain could set",
+    async (cookieName) => {
+      mockFindUnique.mockResolvedValue({
+        userId: "attacker",
+        expires: new Date(Date.now() + 60_000),
+        user: { isActive: true },
+      });
+
+      expect(await getProxySession(createRequest({ [cookieName]: sign("attacker-token") }))).toBeNull();
+      expect(
+        await getProxySessionFromCookieHeader(`${cookieName}=${encodeURIComponent(sign("attacker-token"))}`)
+      ).toBeNull();
+      expect(mockFindUnique).not.toHaveBeenCalled();
+    }
+  );
+
   test("rejects a tampered cookie signature without hitting the database", async () => {
     const request = createRequest({
-      "__Secure-formbricks.session_token": "valid-token.not-a-valid-signature",
+      [SESSION_COOKIE]: "valid-token.not-a-valid-signature",
     });
     expect(getSessionTokenFromRequest(request)).toBeNull();
     expect(await getProxySession(request)).toBeNull();
@@ -74,7 +96,7 @@ describe("proxy-session", () => {
       user: { isActive: true },
     });
 
-    const request = createRequest({ "formbricks.session_token": sign("expired-token") });
+    const request = createRequest({ [SESSION_COOKIE]: sign("expired-token") });
     const session = await getProxySession(request);
 
     expect(session).toBeNull();
@@ -88,7 +110,7 @@ describe("proxy-session", () => {
       user: { isActive: false },
     });
 
-    const request = createRequest({ "formbricks.session_token": sign("inactive-user-token") });
+    const request = createRequest({ [SESSION_COOKIE]: sign("inactive-user-token") });
     expect(await getProxySession(request)).toBeNull();
   });
 
@@ -100,7 +122,7 @@ describe("proxy-session", () => {
     };
     mockFindUnique.mockResolvedValue(validSession);
 
-    const request = createRequest({ "__Secure-formbricks.session_token": sign("valid-token") });
+    const request = createRequest({ [SESSION_COOKIE]: sign("valid-token") });
     const session = await getProxySession(request);
 
     expect(session).toEqual(validSession);
@@ -115,7 +137,7 @@ describe("proxy-session", () => {
     };
     mockFindUnique.mockResolvedValue(validSession);
 
-    const cookieHeader = `other=1; formbricks.session_token=${encodeURIComponent(sign("header-token"))}`;
+    const cookieHeader = `other=1; ${SESSION_COOKIE}=${encodeURIComponent(sign("header-token"))}`;
 
     expect(await getProxySessionFromCookieHeader(cookieHeader)).toEqual(validSession);
     expect(mockFindUnique).toHaveBeenCalledWith({ where: { sessionToken: "header-token" }, select: SELECT });
@@ -123,7 +145,7 @@ describe("proxy-session", () => {
 
   test("returns null from a Cookie header without a verified session cookie, without a query", async () => {
     expect(await getProxySessionFromCookieHeader(null)).toBeNull();
-    expect(await getProxySessionFromCookieHeader("formbricks.session_token=forged.signature")).toBeNull();
+    expect(await getProxySessionFromCookieHeader(`${SESSION_COOKIE}=forged.signature`)).toBeNull();
     expect(mockFindUnique).not.toHaveBeenCalled();
   });
 });

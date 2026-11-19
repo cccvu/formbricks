@@ -32,7 +32,12 @@ import { ssoDatabaseHooks, ssoLicenseGateBeforeHandler } from "@/modules/ee/sso/
 import { ssoGenericOAuthConfig, ssoSocialProviders } from "@/modules/ee/sso/lib/better-auth-providers";
 import { ssoRecoverySignInPlugin } from "@/modules/ee/sso/lib/better-auth-recovery-signin";
 import { runAfterAuthHooks } from "./after-auth-hooks";
-import { EMAIL_VERIFICATION_TTL_SECONDS, USE_SECURE_COOKIES } from "./auth-cookies";
+import { assertHostPrefixedAuthCookies } from "./auth-cookie-guard";
+import {
+  AUTH_COOKIE_PREFIX,
+  AUTH_DEFAULT_COOKIE_ATTRIBUTES,
+  EMAIL_VERIFICATION_TTL_SECONDS,
+} from "./auth-cookies";
 import { rejectInactiveUserOnSessionCreate } from "./better-auth-active-user-gate";
 import { runAfterEmailVerificationHooks } from "./better-auth-email-verification";
 import { hibpBreachCheckBeforeHandler } from "./better-auth-hibp";
@@ -66,8 +71,8 @@ const DAY_IN_SECONDS = 60 * 60 * 24;
  */
 const OAUTH_STATE_COOKIE_MAX_AGE_SECONDS = 10 * 60;
 
-// `USE_SECURE_COOKIES` and `EMAIL_VERIFICATION_TTL_SECONDS` live in auth-cookies.ts — the sign-up
-// intent cookie (ENG-2562) needs both, and it is reached FROM this module, so keeping them here and
+// The cookie settings and `EMAIL_VERIFICATION_TTL_SECONDS` live in auth-cookies.ts — the sign-up
+// intent cookie (ENG-2562) needs them, and it is reached FROM this module, so keeping them here and
 // exporting them would close an import cycle. Their derivation is documented there.
 
 /** Resolve a user's locale for transactional emails (Better Auth's callback user omits it). */
@@ -462,8 +467,11 @@ export const auth = betterAuth({
   },
 
   advanced: {
-    useSecureCookies: USE_SECURE_COOKIES, // "__Secure-" prefix on HTTPS; relaxed on http (local/dev)
-    cookiePrefix: "formbricks",
+    // `__Host-formbricks` on HTTPS, `formbricks` on http (local/dev). `useSecureCookies` must stay false:
+    // it would prepend `__Secure-` to that prefix. `Secure` comes from the default attributes below.
+    // See `AUTH_COOKIE_PREFIX` in auth-cookies.ts; `assertHostPrefixedAuthCookies` checks it at boot.
+    useSecureCookies: false,
+    cookiePrefix: AUTH_COOKIE_PREFIX,
     // Formbricks ids are cuid2 (Prisma `@default(cuid())` + the `ZId = z.cuid2()` validators in the
     // service layer). Better Auth's default id format is NOT cuid2, so without this every Formbricks
     // service that validates a user id via ZId (e.g. updateUser, called from the SSO provisioning
@@ -478,7 +486,7 @@ export const auth = betterAuth({
       // `main.prisma`.
       validateSchema: false,
     },
-    defaultCookieAttributes: { sameSite: "lax", httpOnly: true, secure: USE_SECURE_COOKIES, path: "/" },
+    defaultCookieAttributes: AUTH_DEFAULT_COOKIE_ATTRIBUTES,
     // The OAuth state cookie would otherwise expire 5 minutes before the state it guards (ENG-3314).
     cookies: { state: { attributes: { maxAge: OAUTH_STATE_COOKIE_MAX_AGE_SECONDS } } },
     // Proxy has already selected the configured trusted hop. Do not re-parse forwarding chains or add
@@ -538,3 +546,7 @@ export const auth = betterAuth({
     nextCookies(),
   ],
 });
+
+// Refuse to serve auth on HTTPS with a cookie a sibling subdomain could overwrite, or one the browser
+// would drop. Run over the options Better Auth was given, with its own cookie getter.
+assertHostPrefixedAuthCookies(auth.options);

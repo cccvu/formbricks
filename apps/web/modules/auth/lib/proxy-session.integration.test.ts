@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { prisma } from "@formbricks/database";
 import { resetDb } from "@/integration/reset-db";
 import { auth } from "@/modules/auth/lib/auth";
+import { SESSION_TOKEN_COOKIE_NAME } from "@/modules/auth/lib/auth-cookies";
 import { getProxySession } from "@/modules/auth/lib/proxy-session";
-import { BETTER_AUTH_SESSION_COOKIE_NAMES } from "@/modules/auth/lib/session-cookie";
 
 /**
  * Integration coverage for the forward-auth proxy (ENG-1054 cutover C2) against real Postgres.
@@ -31,7 +31,7 @@ const signInAndGetSessionCookie = async (email: string): Promise<{ name: string;
     const eq = pair.indexOf("=");
     const name = pair.slice(0, eq).trim();
     const value = pair.slice(eq + 1);
-    if ((BETTER_AUTH_SESSION_COOKIE_NAMES as readonly string[]).includes(name)) {
+    if (name === SESSION_TOKEN_COOKIE_NAME) {
       return { name, value };
     }
   }

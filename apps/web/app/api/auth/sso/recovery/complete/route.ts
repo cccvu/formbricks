@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { logger } from "@formbricks/logger";
+import { SESSION_TOKEN_COOKIE_NAME, USE_SECURE_COOKIES } from "@/modules/auth/lib/auth-cookies";
 import { withAuthRequestBodyLimit } from "@/modules/auth/lib/auth-request-body-limit";
 import { getSession } from "@/modules/auth/lib/session";
-import {
-  BETTER_AUTH_SESSION_COOKIE_NAMES,
-  getSessionTokenFromCookieHeader,
-} from "@/modules/auth/lib/session-cookie";
+import { getSessionTokenFromCookieHeader } from "@/modules/auth/lib/session-cookie";
 import { revokeSessionByToken } from "@/modules/auth/lib/session-revocation";
 import {
   SsoRecoveryError,
@@ -13,21 +11,20 @@ import {
   getSsoRecoveryFailureRedirectUrl,
 } from "@/modules/ee/sso/lib/sso-recovery";
 
-const clearSessionCookies = (response: NextResponse) => {
-  for (const cookieName of BETTER_AUTH_SESSION_COOKIE_NAMES) {
-    response.cookies.set({
-      name: cookieName,
-      value: "",
-      expires: new Date(0),
-      path: "/",
-      secure: cookieName.startsWith("__Secure-"),
-    });
-  }
+// The browser ignores a clear of a `__Host-` cookie unless it is `Secure` with `Path=/`, like the set.
+const clearSessionCookie = (response: NextResponse) => {
+  response.cookies.set({
+    name: SESSION_TOKEN_COOKIE_NAME,
+    value: "",
+    expires: new Date(0),
+    path: "/",
+    secure: USE_SECURE_COOKIES,
+  });
 };
 
 const buildFailedRecoveryResponse = async (request: Request, callbackUrl?: string) => {
   const response = NextResponse.redirect(getSsoRecoveryFailureRedirectUrl(callbackUrl));
-  clearSessionCookies(response);
+  clearSessionCookie(response);
 
   const sessionToken = getSessionTokenFromCookieHeader(request.headers.get("cookie"));
   if (!sessionToken) {
