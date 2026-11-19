@@ -128,6 +128,7 @@ type TEnvironmentIssuePath =
   | keyof TAuthzedConfigurationEnv
   | keyof TAuthConfigurationEnv
   | keyof TSesConfigurationEnv
+  | keyof z.infer<typeof ZEmailCodeAuthEnv>
   | "EMAIL_SEND_AUDIT_ENABLED"
   | "EMAIL_SEND_AUDIT_BUCKET"
   | "EMAIL_SEND_AUDIT_KMS_KEY_ARN"
