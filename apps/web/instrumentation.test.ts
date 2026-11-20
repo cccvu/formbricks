@@ -42,6 +42,8 @@ vi.mock("@/lib/constants", () => ({
   SENTRY_DSN: undefined,
 }));
 
+const mockLoadAuthModule = vi.fn();
+
 vi.mock("./instrumentation-jobs", () => ({
   registerRecurringJobs: mockRegisterRecurringJobs,
   registerJobsWorker: mockRegisterJobsWorker,
@@ -51,6 +53,11 @@ describe("instrumentation register", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    // Registered per test (not hoisted) so each fresh import of instrumentation re-runs the factory.
+    vi.doMock("@/modules/auth/lib/auth", () => {
+      mockLoadAuthModule();
+      return { auth: {} };
+    });
     mockAssertAuthzedRuntimeConfiguration.mockReset();
     mockAssertAuthRuntimeConfiguration.mockReset();
     mockWarnOnAuthSecretRisks.mockReset();
@@ -128,6 +135,28 @@ describe("instrumentation register", () => {
     expect(mockRegisterRecurringJobs).not.toHaveBeenCalled();
   });
 
+  test("loads the auth module at startup so its cookie check can stop the boot", async () => {
+    const { register } = await import("./instrumentation");
+
+    await register();
+
+    expect(mockLoadAuthModule).toHaveBeenCalledTimes(1);
+  });
+
+  test("refuses to start background work when the auth module fails its load-time check", async () => {
+    mockLoadAuthModule.mockImplementationOnce(() => {
+      throw new Error("Better Auth cookies must be __Host- cookies");
+    });
+
+    const { register } = await import("./instrumentation");
+
+    // Vitest rewraps an error thrown by a mock factory, so assert the rejection, not its message.
+    await expect(register()).rejects.toThrow();
+    expect(mockLoadAuthModule).toHaveBeenCalledTimes(1);
+    expect(mockRegisterJobsWorker).not.toHaveBeenCalled();
+    expect(mockRegisterRecurringJobs).not.toHaveBeenCalled();
+  });
+
   test("warns about risky auth secret configurations at startup", async () => {
     const { register } = await import("./instrumentation");
 
@@ -155,6 +184,7 @@ describe("instrumentation register", () => {
     expect(mockAssertAuthRuntimeConfiguration).not.toHaveBeenCalled();
     expect(mockWarnOnAuthSecretRisks).not.toHaveBeenCalled();
     expect(mockWarnOnPlainChatMisconfiguration).not.toHaveBeenCalled();
+    expect(mockLoadAuthModule).not.toHaveBeenCalled();
     // Same guard, so assert the whole block rather than the two calls this change happened to add.
     expect(mockAssertAuthzedRuntimeConfiguration).not.toHaveBeenCalled();
   });

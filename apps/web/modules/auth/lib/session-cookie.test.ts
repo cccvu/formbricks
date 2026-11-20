@@ -91,9 +91,13 @@ describe("Better Auth session-cookie verification", () => {
   // this host (`Domain=` the parent domain), and a validly signed value is easy to get: the attacker's
   // own session. Better Auth only reads the `__Host-` name, so accepting either of these here would sign
   // the victim into the attacker's account wherever the proxy decides, and only there.
+  //
+  // The third case is the `__Host-` name behind a leading 0xA0 byte (U+00A0 once Node decodes the header
+  // as latin1). The browser does not treat it as `__Host-`, and `String.prototype.trim()` strips it.
   describe.each([
     ["unprefixed", DEV_COOKIE],
     ["__Secure-", SECURE_COOKIE],
+    ["U+00A0-led __Host-", `\u00A0${HOST_COOKIE}`],
   ])("on https, a validly signed %s cookie", (_label, cookieName) => {
     test("is ignored by the cookie-store reader", async () => {
       mockConstants.AUTH_SECRET = BA_SECRET;

@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { AUTH_SECRET } from "@/lib/constants";
 import { constantTimeEqual } from "@/lib/crypto";
+import { getValidCookiePairs } from "@/lib/utils/cookie-header";
 import { SESSION_TOKEN_COOKIE_NAME } from "./auth-cookies";
 
 /**
@@ -64,7 +65,9 @@ const verifyAndExtractSessionToken = (signedValue: string | null): string | null
 };
 
 const getSignedCookieValueFromHeader = (cookieHeader: string, cookieName: string): string | null => {
-  const cookies = cookieHeader.split(";").map((cookie) => cookie.trim());
+  // Not `String.prototype.trim()`: it strips U+00A0, so a sibling's `\xA0__Host-...` cookie, which the
+  // browser does not hold to the `__Host-` rules, would read as ours (see lib/utils/cookie-header.ts).
+  const cookies = getValidCookiePairs(cookieHeader);
 
   for (const cookie of cookies) {
     if (!cookie.startsWith(`${cookieName}=`)) {

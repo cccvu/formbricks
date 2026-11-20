@@ -52,6 +52,11 @@ export const register = async () => {
 
     // Skip runtime-only BullMQ bootstrapping during production builds.
     if (process.env.NEXT_PHASE !== "phase-production-build") {
+      // Load the auth module now, not on the first auth request, so its load-time cookie check
+      // (assertHostPrefixedAuthCookies) fails startup like the checks above instead of turning every
+      // auth route into a 5xx behind a healthy /health. After OpenTelemetry, so its hooks see Prisma.
+      await import("@/modules/auth/lib/auth");
+
       try {
         const { registerOnlinePauseDelivery } = await import("./lib/upgrade/pause-delivery");
         registerOnlinePauseDelivery();
