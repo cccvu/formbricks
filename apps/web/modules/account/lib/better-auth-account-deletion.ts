@@ -6,7 +6,7 @@ import { logger } from "@formbricks/logger";
 import { deleteUserOrganizationRelationships } from "@/lib/authzed/organization-membership";
 import { runPostCommitProjection } from "@/lib/authzed/projection-boundary";
 import { deleteUserTeamRelationships } from "@/lib/authzed/team-workspace";
-import { DEFAULT_LOCALE } from "@/lib/constants";
+import { DEFAULT_LOCALE, EMAIL_CODE_AUTH_ENABLED } from "@/lib/constants";
 import { deleteOrganization, getOrganizationsWhereUserIsSingleOwner } from "@/lib/organization/service";
 import { capturePostHogEvent } from "@/lib/posthog";
 import { ACCOUNT_DELETION_SOLE_OWNER_BLOCK_MESSAGE } from "@/modules/account/constants";
@@ -141,6 +141,22 @@ export const requireDeletionConfirmationBeforeHandler = async (ctx: AuthHookCont
   if (ctx.path !== "/delete-user") return;
 
   const body = ctx.body as { password?: unknown; token?: unknown } | undefined;
+
+  // Email-code sign-in (EMAIL_CODE_AUTH_ENABLED): the emailed code (Better Auth's delete token) is the only
+  // factor, and only in-process (`deleteAccountWithCode`). Over HTTP the route does not exist: the
+  // email-code guard answers 404, and so does this hook, which runs first, so every request gets the same
+  // answer whatever its body. A password is refused outright, so a stolen session cannot use this as a
+  // password oracle.
+  if (EMAIL_CODE_AUTH_ENABLED) {
+    if (ctx.request) throw new APIError("NOT_FOUND");
+    if (body?.password || !body?.token) {
+      throw new APIError("BAD_REQUEST", {
+        message: "A confirmation code is required to delete your account.",
+      });
+    }
+    return;
+  }
+
   if (body?.password || body?.token) return; // Better Auth verifies the supplied factor
 
   throw new APIError("BAD_REQUEST", {

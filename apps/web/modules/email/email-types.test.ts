@@ -4,6 +4,7 @@ import type { TSurvey } from "@formbricks/types/surveys/types";
 import { applyEmailRateLimits } from "@/modules/email/lib/email-rate-limits";
 import { sendFollowUpEmail } from "@/modules/survey/follow-ups/lib/email";
 import {
+  sendAccountCodeEmail,
   sendAccountDeletedEmail,
   sendAttachmentExportFailedEmail,
   sendAttachmentExportReadyEmail,
@@ -48,6 +49,8 @@ vi.mock("@/modules/email/lib/survey-response-email", () => ({
   buildSurveyResponseEmailHtml: async () => "<p>Body</p>",
 }));
 vi.mock("@formbricks/email", () => ({
+  getAccountCodeEmailSubject: () => "subject",
+  renderAccountCodeEmail: async () => ({ html: "html", text: "text" }),
   renderAccountDeletedEmail: async () => "html",
   renderAccountDeletionEmail: async () => "html",
   renderAttachmentExportFailedEmail: async () => "html",
@@ -109,6 +112,39 @@ const senders: [string, () => Promise<unknown>][] = [
   ],
   ["sso_sign_in_hint", () => sendSsoSignInHintEmail({ email, locale, providerNames: ["Microsoft"] })],
   ["sign_in_code", () => sendSignInCodeEmail(email, "12345678", locale)],
+  [
+    "account_deletion_code",
+    () =>
+      sendAccountCodeEmail({
+        to: email,
+        code: "12345678",
+        purpose: "delete_account",
+        locale,
+        actorUserId: "user",
+      }),
+  ],
+  [
+    "email_change_current_code",
+    () =>
+      sendAccountCodeEmail({
+        to: email,
+        code: "12345678",
+        purpose: "confirm_email_change",
+        locale,
+        actorUserId: "user",
+      }),
+  ],
+  [
+    "email_change_new_code",
+    () =>
+      sendAccountCodeEmail({
+        to: email,
+        code: "12345678",
+        purpose: "verify_new_email",
+        locale,
+        actorUserId: "user",
+      }),
+  ],
   [
     "data_retention_notice",
     () =>
@@ -200,6 +236,9 @@ describe("email source attribution", () => {
     expect(sendEmail).toHaveBeenCalledOnce();
     const trigger = [
       "email_change_verification",
+      "account_deletion_code",
+      "email_change_current_code",
+      "email_change_new_code",
       "survey_preview",
       "customization_preview",
       "attachment_export",

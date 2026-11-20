@@ -6,8 +6,21 @@ import { EMAIL_CODE_ALLOWED_ATTEMPTS, EMAIL_CODE_LENGTH, EMAIL_CODE_TTL_SECONDS 
 import { emailCodeAfterHandler, emailCodeBeforeHandler, isEmailCodeGuardedPath } from "./guards";
 import { sendEmailCodeGated } from "./send";
 
-/** The two endpoints we serve. Everything else the plugin defines is never mounted. */
-export const EMAIL_CODE_ENDPOINT_KEYS = ["sendVerificationOTP", "signInEmailOTP"] as const;
+/**
+ * The endpoints we mount. Everything else the plugin defines never is.
+ *  - `sendVerificationOTP`, `signInEmailOTP`: sign-in, served over HTTP behind the guards.
+ *  - `createVerificationOTP`: Better Auth `serverOnly` (no route), so only server code can mint a code; the
+ *    email-change action uses it to mail a code to the CURRENT address.
+ *  - `requestEmailChangeEmailOTP`, `changeEmailEmailOTP`: email change, in-process only (the guards answer
+ *    404 over HTTP).
+ */
+export const EMAIL_CODE_ENDPOINT_KEYS = [
+  "sendVerificationOTP",
+  "signInEmailOTP",
+  "createVerificationOTP",
+  "requestEmailChangeEmailOTP",
+  "changeEmailEmailOTP",
+] as const;
 
 export const createEmailOTPBase = () =>
   emailOTP({
@@ -21,27 +34,42 @@ export const createEmailOTPBase = () =>
     resendStrategy: "rotate",
     // Sign-in may create the account; the creation-time backstop decides whether it may.
     disableSignUp: false,
+    // Changing the address needs a code from the CURRENT mailbox (consumed by request-email-change, 5
+    // wrong guesses burn it) and then one from the new mailbox (consumed by change-email).
+    changeEmail: { enabled: true, verifyCurrentEmail: true },
     sendVerificationOTP: sendEmailCodeGated,
   });
 
 /**
- * Better Auth's `emailOTP` plugin, cut down to sign-in only.
+ * Better Auth's `emailOTP` plugin, cut down to sign-in and email change.
  *
- * Only `sendVerificationOTP` and `signInEmailOTP` are mounted: the other nine (password reset by code,
- * email change, verification, and the two server-only code readers) have no route and no `auth.api`
- * method, which is stronger than `disabledPaths` (an exact string match on the request path). The
- * plugin's own after-hook (sign-up verification) and `init` are inert with these options, and its
- * rate-limit entries are replaced by `customRules` in auth.ts. `email-code-plugin-contract.test.ts`
- * pins the upstream endpoint list so a better-auth upgrade cannot silently change what this keeps.
+ * Only the five `EMAIL_CODE_ENDPOINT_KEYS` are mounted: the other six (password reset by code, email
+ * verification, the code checker and the server-only code reader) have no route and no `auth.api` method,
+ * which is stronger than `disabledPaths` (an exact string match on the request path). The plugin's own
+ * after-hook (sign-up verification) and `init` are inert with these options, and its rate-limit entries
+ * are replaced by `customRules` in auth.ts. `email-code-plugin-contract.test.ts` pins the upstream
+ * endpoint list so a better-auth upgrade cannot silently change what this keeps.
  */
 export const emailCodePlugin = () => {
   const base = createEmailOTPBase();
-  const { sendVerificationOTP, signInEmailOTP } = base.endpoints;
+  const {
+    sendVerificationOTP,
+    signInEmailOTP,
+    createVerificationOTP,
+    requestEmailChangeEmailOTP,
+    changeEmailEmailOTP,
+  } = base.endpoints;
   return {
     id: base.id,
     version: base.version,
     $ERROR_CODES: base.$ERROR_CODES,
-    endpoints: { sendVerificationOTP, signInEmailOTP },
+    endpoints: {
+      sendVerificationOTP,
+      signInEmailOTP,
+      createVerificationOTP,
+      requestEmailChangeEmailOTP,
+      changeEmailEmailOTP,
+    },
     hooks: {
       before: [
         {

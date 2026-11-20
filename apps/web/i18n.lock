@@ -699,6 +699,19 @@ checksums:
     common/your_license_has_expired_please_renew: 3f21ae4a7deab351b143b407ece58254
     common/your_profile: 955b66d0455e28c805cc462b8f8d1f11
     emails/accept: f8cc1de4f5e3c850cfdbbc0ec831ade7
+    emails/account_code_confirm_email_change_did_not_request: 9bdbd06b3b943ba587148d6e9ad34243
+    emails/account_code_confirm_email_change_heading: d1169182da9c44d1e497aa1a3d7e125b
+    emails/account_code_confirm_email_change_subject: d1169182da9c44d1e497aa1a3d7e125b
+    emails/account_code_confirm_email_change_text: d01c2eb587cd966881fa9b0b0797d1e4
+    emails/account_code_delete_account_did_not_request: bb53a15fc4b3dcfe76267fb64ffaf750
+    emails/account_code_delete_account_heading: 9e04039fbfe8e41ec6054dd4d73bde99
+    emails/account_code_delete_account_subject: 9e04039fbfe8e41ec6054dd4d73bde99
+    emails/account_code_delete_account_text: 263fb75b964df82289d7c456a389fe45
+    emails/account_code_email_expiry: 47a2229806a91fcb82c6597efdb3fd9e
+    emails/account_code_verify_new_email_did_not_request: 880e5b71701438cd851d29d802cab85e
+    emails/account_code_verify_new_email_heading: 97074969925ee90ad472fb5c99394a01
+    emails/account_code_verify_new_email_subject: 97074969925ee90ad472fb5c99394a01
+    emails/account_code_verify_new_email_text: ef42b7c2bc51f54ae4d1509a0bb348b9
     emails/account_deleted_email_did_not_request: 25d9b22890b15739e812ac2203935f47
     emails/account_deleted_email_heading: 804400728b6c442c746b32ee02d1795a
     emails/account_deleted_email_subject: 319a26159c27fd95d550e191267fa289

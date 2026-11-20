@@ -1,7 +1,10 @@
 import {
+  type TAccountCodePurpose,
   type TAttachmentExportFailureReason,
   type TRetentionNoticeArchivedSurvey,
   type TRetentionNoticeResponseDeletion,
+  getAccountCodeEmailSubject,
+  renderAccountCodeEmail,
   renderAccountDeletedEmail,
   renderAccountDeletionEmail,
   renderAttachmentExportFailedEmail,
@@ -50,7 +53,7 @@ import {
 import { getOrganizationByWorkspaceId } from "@/lib/organization/service";
 import { TElementResponseMappingSurvey, getElementResponseMapping } from "@/lib/responses";
 import { getTranslate } from "@/lingodotdev/server";
-import { EMAIL_CODE_TTL_SECONDS } from "@/modules/auth/lib/email-code/constants";
+import { ACCOUNT_CODE_TTL_SECONDS, EMAIL_CODE_TTL_SECONDS } from "@/modules/auth/lib/email-code/constants";
 import {
   TVerificationRequestPurpose,
   VERIFICATION_LINK_TTL_SECONDS,
@@ -58,12 +61,12 @@ import {
 } from "@/modules/auth/lib/verification-links";
 import { toEmailDisplayText } from "@/modules/email/lib/email-display-text";
 import type { TEmailRateLimitContext } from "@/modules/email/lib/email-rate-limits";
-import { sendEmail } from "@/modules/email/lib/send-email";
+import { type TEmailType, sendEmail } from "@/modules/email/lib/send-email";
 import { buildVerifiedLinkSurveyUrl } from "@/modules/email/lib/verified-link-survey-url";
 import { resolveStorageUrl } from "@/modules/storage/utils";
 
 export { IS_SMTP_CONFIGURED } from "@/lib/constants";
-export type { TAttachmentExportFailureReason };
+export type { TAccountCodePurpose, TAttachmentExportFailureReason };
 export { sendEmail } from "@/modules/email/lib/send-email";
 
 const legalProps: TEmailTemplateLegalProps = {
@@ -360,6 +363,53 @@ export const sendSignInCodeEmail = async (to: string, code: string, locale?: str
     auditContext: { trigger: "system" },
     to,
     subject: t("emails.sign_in_code_email_subject"),
+    html,
+    text,
+  });
+};
+
+/** The minutes an account-change code email states, derived from the code's real lifetime. */
+export const ACCOUNT_CODE_VALIDITY_MINUTES = ACCOUNT_CODE_TTL_SECONDS / 60;
+
+/** Each purpose has its own email type, so each has its own per-recipient backstop (email-rate-limits.ts). */
+const ACCOUNT_CODE_EMAIL_TYPES: Record<TAccountCodePurpose, TEmailType> = {
+  delete_account: "account_deletion_code",
+  confirm_email_change: "email_change_current_code",
+  verify_new_email: "email_change_new_code",
+};
+
+/**
+ * Emails a one-time account-change code: deleting the account, or the two codes of an email change (one
+ * to the current address, one to the new). Same rules as `sendSignInCodeEmail`: the subject never carries
+ * the code, nothing here logs the address or the code, a send failure throws, and an unknown locale falls
+ * back to the default.
+ */
+export const sendAccountCodeEmail = async ({
+  to,
+  code,
+  purpose,
+  locale,
+  actorUserId,
+}: {
+  to: string;
+  code: string;
+  purpose: TAccountCodePurpose;
+  locale?: string | null;
+  actorUserId?: string;
+}): Promise<boolean> => {
+  const parsedLocale = ZUserLocale.safeParse(locale);
+  const t = await getTranslate(parsedLocale.success ? parsedLocale.data : DEFAULT_LOCALE);
+  const { html, text } = await renderAccountCodeEmail({
+    code,
+    validityInMinutes: ACCOUNT_CODE_VALIDITY_MINUTES,
+    purpose,
+    t,
+  });
+  return await sendEmail({
+    emailType: ACCOUNT_CODE_EMAIL_TYPES[purpose],
+    auditContext: actorUserId ? { trigger: "user", actorUserId } : { trigger: "system" },
+    to,
+    subject: getAccountCodeEmailSubject(purpose, t),
     html,
     text,
   });

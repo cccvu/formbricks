@@ -123,6 +123,15 @@ export const rateLimitConfigs = {
   // Server actions - varies by action type
   actions: {
     emailUpdate: { interval: 3600, allowedPerInterval: 3, namespace: "action:email", failClosed: true }, // 3 per hour
+    // Email-code sign-in only: each attempt to redeem an email-change code (the current-address code, then
+    // the new-address code), per user. Sending the current-address code spends `emailUpdate`. A wrong code
+    // also burns after 5 guesses (Better Auth), so this bounds resends times guesses.
+    emailChangeCode: {
+      interval: 3600,
+      allowedPerInterval: 10,
+      namespace: "action:email-change:code",
+      failClosed: true,
+    }, // 10 per hour
     // A signed-in user asking for a reset link to their own address. Its own budget rather than
     // forgot-password's per-account one, which strangers can spend for any address (ENG-3823).
     passwordResetRequest: {
@@ -137,6 +146,15 @@ export const rateLimitConfigs = {
       namespace: "action:account-delete",
       failClosed: true,
     }, // 5 per hour
+    // Email-code sign-in only: each attempt to delete the account with an emailed code, per user. The code is
+    // 8 digits and lives 10 minutes, so 10 guesses an hour against at most 5 live codes leaves the odds of a
+    // stolen session guessing one at about 5 in 10 million an hour. Requesting a code spends `accountDeletion`.
+    accountDeletionCode: {
+      interval: 3600,
+      allowedPerInterval: 10,
+      namespace: "action:account-delete:code",
+      failClosed: true,
+    }, // 10 per hour
     surveyFollowUp: {
       interval: 3600,
       allowedPerInterval: 50,

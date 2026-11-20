@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { prisma } from "@formbricks/database";
 import { logger } from "@formbricks/logger";
-import { sendSignInCodeEmail } from "@/modules/email";
+import { sendAccountCodeEmail, sendSignInCodeEmail } from "@/modules/email";
 import { isEmailCodeRecipientAdmitted } from "./admission";
 import { consumeEmailCodeSendQuota } from "./limits";
 import { markEmailCodeSendStart, sendEmailCodeGated, shouldSendEmailCode } from "./send";
@@ -13,7 +14,8 @@ vi.mock("./constants", async (importOriginal) => ({
 }));
 vi.mock("./admission", () => ({ isEmailCodeRecipientAdmitted: vi.fn() }));
 vi.mock("./limits", () => ({ consumeEmailCodeSendQuota: vi.fn() }));
-vi.mock("@/modules/email", () => ({ sendSignInCodeEmail: vi.fn() }));
+vi.mock("@/modules/email", () => ({ sendSignInCodeEmail: vi.fn(), sendAccountCodeEmail: vi.fn() }));
+vi.mock("@formbricks/database", () => ({ prisma: { user: { findUnique: vi.fn() } } }));
 vi.mock("@formbricks/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -22,7 +24,10 @@ const email = "person@example.com";
 const otp = "48207135";
 
 /** Runs one mail callback and returns how long it took. */
-const timedSend = async (type = "sign-in", ctx?: { request?: Request }): Promise<number> => {
+const timedSend = async (
+  type = "sign-in",
+  ctx?: Parameters<typeof sendEmailCodeGated>[1]
+): Promise<number> => {
   const startedAt = Date.now();
   await expect(sendEmailCodeGated({ email, otp, type }, ctx)).resolves.toBeUndefined();
   return Date.now() - startedAt;
@@ -41,6 +46,8 @@ beforeEach(() => {
   vi.mocked(isEmailCodeRecipientAdmitted).mockResolvedValue(true);
   vi.mocked(consumeEmailCodeSendQuota).mockResolvedValue(true);
   vi.mocked(sendSignInCodeEmail).mockResolvedValue(true);
+  vi.mocked(sendAccountCodeEmail).mockResolvedValue(true);
+  vi.mocked(prisma.user.findUnique).mockResolvedValue({ locale: "de-DE" } as never);
 });
 
 describe("shouldSendEmailCode (the before-hook's decision)", () => {
@@ -139,5 +146,73 @@ describe("sendEmailCodeGated (the mail callback)", () => {
     expect(logged).not.toContain(email);
     expect(logged).not.toContain("person");
     expect(logged).not.toContain(otp);
+  });
+});
+
+// Better Auth calls the same callback from /email-otp/request-email-change, only after the current-address
+// code was proven and only for an address no account has. That endpoint is in-process only.
+describe("sendEmailCodeGated: change-email (verify the new address)", () => {
+  const newEmail = "new.address@example.com";
+  const sessionCtx = { context: { session: { user: { id: "user-1" } } } };
+
+  test("mails the new-address code in the requesting user's locale, without the sign-in admission check", async () => {
+    await sendEmailCodeGated({ email: newEmail, otp, type: "change-email" }, sessionCtx);
+
+    expect(sendAccountCodeEmail).toHaveBeenCalledExactlyOnceWith({
+      to: newEmail,
+      code: otp,
+      purpose: "verify_new_email",
+      locale: "de-DE",
+      actorUserId: "user-1",
+    });
+    expect(isEmailCodeRecipientAdmitted).not.toHaveBeenCalled();
+    expect(consumeEmailCodeSendQuota).not.toHaveBeenCalled();
+    expect(sendSignInCodeEmail).not.toHaveBeenCalled();
+  });
+
+  // There is no request to pad (the profile action pads its own response), so it must not sit out the
+  // sign-in floor.
+  test("does not wait out the sign-in floor", async () => {
+    expect(await timedSend("change-email", sessionCtx)).toBeLessThan(FLOOR_MS / 2);
+  });
+
+  test("falls back to the default locale when the user cannot be read", async () => {
+    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error("db"));
+    await sendEmailCodeGated({ email: newEmail, otp, type: "change-email" }, sessionCtx);
+    expect(sendAccountCodeEmail).toHaveBeenCalledWith(expect.objectContaining({ locale: undefined }));
+  });
+
+  test.each([
+    ["throws", () => vi.mocked(sendAccountCodeEmail).mockRejectedValue(new Error(`bounce for ${newEmail}`))],
+    ["reports not sent", () => vi.mocked(sendAccountCodeEmail).mockResolvedValue(false)],
+  ])(
+    "never throws when the sender %s, and logs the failure without the address or code",
+    async (_, arrange) => {
+      arrange();
+      await expect(
+        sendEmailCodeGated({ email: newEmail, otp, type: "change-email" }, sessionCtx)
+      ).resolves.toBeUndefined();
+
+      const logged = loggedText();
+      expect(logged).toContain("auth_account_code_send_failed");
+      expect(logged).toContain("verify_new_email");
+      expect(logged).not.toContain(newEmail);
+      expect(logged).not.toContain("new.address");
+      expect(logged).not.toContain(otp);
+    }
+  );
+
+  test("logs the issued code by recipient tag and purpose only", async () => {
+    await sendEmailCodeGated({ email: newEmail, otp, type: "change-email" }, sessionCtx);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "auth_account_code_issued",
+        purpose: "verify_new_email",
+        recipientTag: expect.stringMatching(/^[0-9a-f]{32}$/),
+      }),
+      expect.any(String)
+    );
+    expect(loggedText()).not.toContain(newEmail);
   });
 });

@@ -8,6 +8,25 @@ const translations: Record<TranslationKey, TranslationValue> = {
   "common.continue": "Continue",
   "common.powered_by_formbricks": "Powered by Formbricks",
   "emails.accept": "Accept",
+  "emails.account_code_confirm_email_change_did_not_request":
+    "If it wasn't you, ignore this email and your email address will stay the same. Never share this code.",
+  "emails.account_code_confirm_email_change_heading": "Your email change code",
+  "emails.account_code_confirm_email_change_subject": "Your email change code",
+  "emails.account_code_confirm_email_change_text":
+    "Someone asked to change the email address of this account. Enter this code to continue.",
+  "emails.account_code_delete_account_did_not_request":
+    "If you didn't ask to delete your account, ignore this email and nothing will change. Never share this code.",
+  "emails.account_code_delete_account_heading": "Your account deletion code",
+  "emails.account_code_delete_account_subject": "Your account deletion code",
+  "emails.account_code_delete_account_text":
+    "Enter this code to permanently delete your account and its data. This can't be undone.",
+  "emails.account_code_email_expiry": "This code expires in {minutes} minutes and can be used once.",
+  "emails.account_code_verify_new_email_did_not_request":
+    "If you didn't ask for this, ignore this email and nothing will change. Never share this code.",
+  "emails.account_code_verify_new_email_heading": "Verify your new email address",
+  "emails.account_code_verify_new_email_subject": "Verify your new email address",
+  "emails.account_code_verify_new_email_text":
+    "Enter this code to make this the new email address of your account.",
   "emails.account_deleted_email_did_not_request":
     "If you did not delete your account, please contact support immediately.",
   "emails.account_deleted_email_heading": "Your account has been deleted",

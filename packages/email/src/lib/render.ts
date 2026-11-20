@@ -1,4 +1,5 @@
 import { render, toPlainText } from "react-email";
+import { AccountCodeEmail, type TAccountCodePurpose } from "../../emails/auth/account-code-email";
 import { AccountDeletedEmail } from "../../emails/auth/account-deleted-email";
 import { DeleteAccountEmail } from "../../emails/auth/delete-account-email";
 import { ForgotPasswordEmail } from "../../emails/auth/forgot-password-email";
@@ -115,6 +116,20 @@ export async function renderSignInCodeEmail(props: {
   t: TFunction;
 }): Promise<{ html: string; text: string }> {
   const html = await render(SignInCodeEmail(props));
+  return { html, text: toPlainText(html) };
+}
+
+/**
+ * An account-change code (delete the account, confirm or verify an email change). Like the sign-in code,
+ * returns the plain-text part alongside the HTML, both from one render.
+ */
+export async function renderAccountCodeEmail(props: {
+  code: string;
+  validityInMinutes: number;
+  purpose: TAccountCodePurpose;
+  t: TFunction;
+}): Promise<{ html: string; text: string }> {
+  const html = await render(AccountCodeEmail(props));
   return { html, text: toPlainText(html) };
 }
 

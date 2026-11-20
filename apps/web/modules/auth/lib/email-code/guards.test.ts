@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ZUserName } from "@formbricks/types/user";
 import type { AuthHookContext } from "@/modules/ee/sso/lib/better-auth-hooks";
 import { EMAIL_CODE_SEND_PATH, EMAIL_CODE_SIGN_IN_PATH } from "./constants";
-import { deriveNameFromEmail, emailCodeAfterHandler, emailCodeBeforeHandler } from "./guards";
+import {
+  deriveNameFromEmail,
+  emailCodeAfterHandler,
+  emailCodeBeforeHandler,
+  isEmailCodeGuardedPath,
+} from "./guards";
 import { consumeEmailCodeVerifyQuota } from "./limits";
 import { createEmailOTPBase } from "./plugin";
 import { markEmailCodeSendStart, padEmailCodeSendToFloor, shouldSendEmailCode } from "./send";
@@ -176,6 +181,108 @@ describe("emailCodeBeforeHandler", () => {
     "answers 404 for %s while password sign-in is off",
     async (path) => {
       await expect(emailCodeBeforeHandler(hookCtx({ path }))).rejects.toMatchObject({ status: "NOT_FOUND" });
+    }
+  );
+});
+
+// Better Auth's router always hands the hook the Request; an in-process `auth.api.*` call from a server
+// action passes headers only. The guards key on that, and on the DECLARED path (never the URL spelling).
+describe("emailCodeBeforeHandler: account-change endpoints", () => {
+  const httpRequest = () => new Request("https://app.example.test/api/auth/anything", { method: "POST" });
+  const changeBody = { newEmail: "new@example.com", otp: "48207135" };
+
+  test.each(["/email-otp/request-email-change", "/email-otp/change-email"])(
+    "%s answers 404 over HTTP and lets an in-process call through to Better Auth",
+    async (path) => {
+      await expect(
+        emailCodeBeforeHandler(hookCtx({ path, body: changeBody, request: httpRequest() }))
+      ).rejects.toMatchObject({ status: "NOT_FOUND" });
+      await expect(emailCodeBeforeHandler(hookCtx({ path, body: changeBody }))).resolves.toBeUndefined();
+    }
+  );
+
+  test.each(["/delete-user", "/delete-user/callback"])(
+    "%s answers 404 over HTTP (no password oracle, no unthrottled code guessing) and allows in-process",
+    async (path) => {
+      for (const body of [{ password: "Passw0rd!" }, { token: "48207135" }, {}]) {
+        await expect(
+          emailCodeBeforeHandler(hookCtx({ path, body, request: httpRequest() }))
+        ).rejects.toMatchObject({ status: "NOT_FOUND" });
+      }
+      await expect(emailCodeBeforeHandler(hookCtx({ path, body: { token: "48207135" } }))).resolves.toBe(
+        undefined
+      );
+    }
+  );
+
+  test.each([
+    "/two-factor/enable",
+    "/two-factor/disable",
+    "/two-factor/get-totp-uri",
+    "/two-factor/verify-totp",
+    "/two-factor/verify-backup-code",
+    "/two-factor/generate-backup-codes",
+    "/two-factor/send-otp",
+    "/two-factor/verify-otp",
+  ])("%s answers 404 over HTTP and in-process alike", async (path) => {
+    await expect(
+      emailCodeBeforeHandler(hookCtx({ path, body: { password: "x" }, request: httpRequest() }))
+    ).rejects.toMatchObject({ status: "NOT_FOUND" });
+    await expect(emailCodeBeforeHandler(hookCtx({ path, body: { password: "x" } }))).rejects.toMatchObject({
+      status: "NOT_FOUND",
+    });
+  });
+
+  // Mounting change-email must not open anything else under the namespace, in-process or not.
+  test.each([
+    "/email-otp/verify-email",
+    "/email-otp/check-verification-otp",
+    "/email-otp/request-password-reset",
+    "/email-otp/reset-password",
+    "/email-otp/something-new",
+  ])("%s stays closed in-process too", async (path) => {
+    await expect(emailCodeBeforeHandler(hookCtx({ path, body: {} }))).rejects.toMatchObject({
+      status: "NOT_FOUND",
+    });
+  });
+
+  test("the in-process send still refuses every type but sign-in", async () => {
+    for (const type of ["email-verification", "change-email"]) {
+      await expect(
+        emailCodeBeforeHandler(hookCtx({ path: EMAIL_CODE_SEND_PATH, body: { ...sendBody, type } }))
+      ).rejects.toMatchObject({ status: "BAD_REQUEST" });
+    }
+    expect(shouldSendEmailCode).not.toHaveBeenCalled();
+  });
+
+  test("leaves every other path alone", async () => {
+    for (const path of ["/get-session", "/sign-out", "/update-user", "/delete-user-x", "/two-factor"]) {
+      await expect(
+        emailCodeBeforeHandler(hookCtx({ path, request: httpRequest() }))
+      ).resolves.toBeUndefined();
+    }
+  });
+});
+
+describe("isEmailCodeGuardedPath (the plugin hook matcher)", () => {
+  test.each([
+    "/email-otp/send-verification-otp",
+    "/email-otp/request-email-change",
+    "/email-otp/change-email",
+    "/sign-in/email-otp",
+    "/change-password",
+    "/delete-user",
+    "/delete-user/callback",
+    "/two-factor/enable",
+  ])("matches %s", (path) => {
+    expect(isEmailCodeGuardedPath(path)).toBe(true);
+  });
+
+  // A server-only endpoint (createVerificationOTP) has no declared path at all.
+  test.each([undefined, "", "/get-session", "/sign-in/social", "/two-factor"])(
+    "does not match %j",
+    (path) => {
+      expect(isEmailCodeGuardedPath(path)).toBe(false);
     }
   );
 });

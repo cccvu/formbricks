@@ -1,5 +1,7 @@
 import "server-only";
+import { prisma } from "@formbricks/database";
 import { logger } from "@formbricks/logger";
+import { mailAccountCode } from "./account-code";
 import { isEmailCodeRecipientAdmitted } from "./admission";
 import { EMAIL_CODE_SEND_FLOOR_MS } from "./constants";
 import { getEmailCodePool } from "./device";
@@ -8,7 +10,12 @@ import { getRecipientTag } from "./tokens";
 
 type TSendInput = { email: string; otp: string; type: string };
 type TSendContext =
-  | { getCookie?: (name: string) => string | null | undefined; request?: Request }
+  | {
+      getCookie?: (name: string) => string | null | undefined;
+      request?: Request;
+      /** Set by Better Auth's session middleware on the email-change endpoints. */
+      context?: { session?: { user?: { id?: string } } | null };
+    }
   | undefined;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -69,9 +76,30 @@ export const shouldSendEmailCode = async (email: string, ctx: TSendContext): Pro
 };
 
 /**
- * The `sendVerificationOTP` callback Better Auth awaits. Only reached for an admitted address within its
- * caps (the before-hook refused everything else with the same response). Mails the code Better Auth just
- * stored and pads to the floor measured from the start of the request.
+ * The email-change half of the callback: Better Auth calls it from `/email-otp/request-email-change`, only
+ * after the current-address code was proven and only when no account has the new address (it sends
+ * nothing for a taken one). No admission check: the address is new by definition. That endpoint answers
+ * 404 over HTTP, so this only ever runs inside the profile action, which pads its own response; there is
+ * no request here to pad. Never throws.
+ */
+const sendEmailChangeCode = async (email: string, otp: string, ctx: TSendContext): Promise<void> => {
+  const userId = ctx?.context?.session?.user?.id;
+  let locale: string | undefined;
+  try {
+    if (userId) {
+      locale = (await prisma.user.findUnique({ where: { id: userId }, select: { locale: true } }))?.locale;
+    }
+  } catch {
+    // The default locale is fine; the code still goes out.
+  }
+  await mailAccountCode({ to: email, code: otp, purpose: "verify_new_email", locale, userId });
+};
+
+/**
+ * The `sendVerificationOTP` callback Better Auth awaits. A `change-email` code goes to
+ * `sendEmailChangeCode` above. A sign-in code is only reached for an admitted address within its caps (the
+ * before-hook refused everything else with the same response): it mails the code Better Auth just stored
+ * and pads to the floor measured from the start of the request. Any other type is never mailed.
  *
  * Never throws, so the response is Better Auth's fixed `{ success: true }` whatever SES does. The send is
  * awaited to completion inside the request (bounded by the transport's timeouts): nothing is left running
@@ -81,6 +109,7 @@ export const sendEmailCodeGated = async (
   { email, otp, type }: TSendInput,
   ctx?: TSendContext
 ): Promise<void> => {
+  if (type === "change-email") return sendEmailChangeCode(email, otp, ctx);
   const startedAt = (ctx?.request && sendRequestStartedAt.get(ctx.request)) ?? Date.now();
   const recipientTag = getRecipientTag(email);
   try {

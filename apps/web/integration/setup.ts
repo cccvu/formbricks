@@ -44,6 +44,8 @@ vi.mock("@/modules/email", () => ({
   // Email sign-in codes: a test reads the code it was sent from
   // `vi.mocked(sendSignInCodeEmail).mock.calls.at(-1)` — `[to, code, locale]`.
   sendSignInCodeEmail: vi.fn(async () => true),
+  // Account-change codes (delete the account, change its email): `[{ to, code, purpose, … }]`.
+  sendAccountCodeEmail: vi.fn(async () => true),
   sendPasswordResetLinkEmail: vi.fn(async () => true),
   sendPasswordResetNotifyEmail: vi.fn(async () => true),
   sendDeleteAccountConfirmationEmail: vi.fn(async () => true),

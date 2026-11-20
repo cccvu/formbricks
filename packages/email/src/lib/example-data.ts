@@ -98,6 +98,12 @@ export const exampleData = {
     validityInMinutes: 10,
   },
 
+  accountCodeEmail: {
+    code: "48207135",
+    validityInMinutes: 10,
+    purpose: "confirm_email_change" as const,
+  },
+
   inviteEmail: {
     inviteeName: "Jane Smith",
     inviterName: "John Doe",
