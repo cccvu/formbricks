@@ -2,7 +2,7 @@ import "server-only";
 import jwt from "jsonwebtoken";
 import { AUTH_SECRET, ENCRYPTION_KEY } from "@/lib/constants";
 import { symmetricDecrypt, symmetricEncrypt } from "@/lib/crypto";
-import { EMAIL_VERIFICATION_TTL_SECONDS, USE_SECURE_COOKIES } from "./auth-cookies";
+import { AUTH_COOKIE_PREFIX, EMAIL_VERIFICATION_TTL_SECONDS, USE_SECURE_COOKIES } from "./auth-cookies";
 
 /**
  * Sign-up intent cookie (ENG-2562) — evidence that THIS browser is the one that registered an account.
@@ -48,11 +48,11 @@ const SIGNUP_INTENT_KIND = "signup_intent";
 const resolveSigningSecret = (): string | undefined => AUTH_SECRET;
 
 /**
- * Better Auth is configured with `cookiePrefix: "formbricks"` and adds `__Secure-` under
- * `useSecureCookies`, so this mirrors both. The `signup_intent` suffix is not a name Better Auth mints,
- * so the two namespaces cannot collide.
+ * Under Better Auth's `cookiePrefix` (`AUTH_COOKIE_PREFIX`: `__Host-formbricks` on HTTPS), so a sibling
+ * subdomain cannot plant one. The `signup_intent` suffix is not a name Better Auth mints, so the two
+ * namespaces cannot collide.
  */
-export const SIGNUP_INTENT_COOKIE_NAME = `${USE_SECURE_COOKIES ? "__Secure-" : ""}formbricks.signup_intent`;
+export const SIGNUP_INTENT_COOKIE_NAME = `${AUTH_COOKIE_PREFIX}.signup_intent`;
 
 /** Cookie attributes, matching Better Auth's `advanced.defaultCookieAttributes`, with one exception. */
 export const SIGNUP_INTENT_COOKIE_OPTIONS = {

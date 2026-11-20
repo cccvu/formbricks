@@ -44,8 +44,8 @@ const grantSessionToSignupBrowser = async (
 
   // Single use: the cookie has done its job. Replay is independently blocked (an already-verified link
   // never fires afterEmailVerification, so the marker is absent), making this defence in depth — but it
-  // must actually land: the production name carries the `__Secure-` prefix, and a browser REJECTS any
-  // Set-Cookie for such a name without the `Secure` attribute, so clearing with a bare `{ maxAge: 0 }`
+  // must actually land: the production name carries the `__Host-` prefix, and a browser REJECTS any
+  // Set-Cookie for such a name without `Secure` and `Path=/`, so clearing with a bare `{ maxAge: 0 }`
   // would silently no-op on HTTPS. Full attribute set, zero lifetime.
   ctx.setCookie(SIGNUP_INTENT_COOKIE_NAME, "", { ...SIGNUP_INTENT_COOKIE_OPTIONS, maxAge: 0 });
 

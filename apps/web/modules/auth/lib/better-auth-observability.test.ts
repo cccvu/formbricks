@@ -903,7 +903,7 @@ describe("recordSsoCallbackOutcome (ENG-2551)", () => {
    */
   const signedInRedirect = (location: string) => {
     const response = new Response(null, { status: 302, headers: { location } });
-    response.headers.append("set-cookie", "__Secure-formbricks.session_token=abc; Path=/; HttpOnly");
+    response.headers.append("set-cookie", "__Host-formbricks.session_token=abc; Path=/; HttpOnly; Secure");
     return response;
   };
 

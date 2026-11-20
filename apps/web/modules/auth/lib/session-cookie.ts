@@ -1,16 +1,19 @@
 import { createHmac } from "node:crypto";
 import { AUTH_SECRET } from "@/lib/constants";
 import { constantTimeEqual } from "@/lib/crypto";
+import { getValidCookiePairs } from "@/lib/utils/cookie-header";
+import { SESSION_TOKEN_COOKIE_NAME } from "./auth-cookies";
 
 /**
- * Better Auth session cookie names — `cookiePrefix: "formbricks"` + `useSecureCookies: true`
- * (modules/auth/lib/auth.ts `advanced`) yield the browser-enforced `__Secure-` prefix on HTTPS; the
- * unprefixed form covers non-secure dev. (ENG-1054 cutover — replaces the NextAuth cookie names.)
+ * The session cookie is read under exactly one name: `SESSION_TOKEN_COOKIE_NAME`, the one Better Auth
+ * sets and reads (`__Host-formbricks.session_token` on HTTPS, `formbricks.session_token` on http).
+ *
+ * No fallback to another name, on purpose. A sibling subdomain can set `formbricks.session_token` or
+ * `__Secure-formbricks.session_token` for this host with `Domain=`, and a validly signed value is easy
+ * to come by: it is the attacker's own session. Accepting either would sign the victim into the
+ * attacker's account here even though Better Auth itself ignores those names. One name also means the
+ * proxy and Better Auth can never disagree about whether a request is signed in.
  */
-export const BETTER_AUTH_SESSION_COOKIE_NAMES = [
-  "__Secure-formbricks.session_token",
-  "formbricks.session_token",
-] as const;
 
 type TCookieStore = {
   get: (name: string) => { value: string } | undefined;
@@ -62,7 +65,9 @@ const verifyAndExtractSessionToken = (signedValue: string | null): string | null
 };
 
 const getSignedCookieValueFromHeader = (cookieHeader: string, cookieName: string): string | null => {
-  const cookies = cookieHeader.split(";").map((cookie) => cookie.trim());
+  // Not `String.prototype.trim()`: it strips U+00A0, so a sibling's `\xA0__Host-...` cookie, which the
+  // browser does not hold to the `__Host-` rules, would read as ours (see lib/utils/cookie-header.ts).
+  const cookies = getValidCookiePairs(cookieHeader);
 
   for (const cookie of cookies) {
     if (!cookie.startsWith(`${cookieName}=`)) {
@@ -78,17 +83,8 @@ const getSignedCookieValueFromHeader = (cookieHeader: string, cookieName: string
 
 /** The verified, unsigned Better Auth session token from a cookie store, or null. */
 export const getSessionTokenFromCookieStore = (cookieStore: TCookieStore): string | null => {
-  // Try every known cookie name and return the first that VERIFIES — don't bail on a present-but-invalid
-  // one (e.g. a stale `__Secure-` cookie from a prior secret/scheme sitting alongside a valid cookie),
-  // which would otherwise wedge the session into a redirect loop.
-  for (const cookieName of BETTER_AUTH_SESSION_COOKIE_NAMES) {
-    const cookie = cookieStore.get(cookieName);
-    if (!cookie?.value) continue;
-    const token = verifyAndExtractSessionToken(decode(cookie.value));
-    if (token) return token;
-  }
-
-  return null;
+  const cookie = cookieStore.get(SESSION_TOKEN_COOKIE_NAME);
+  return cookie?.value ? verifyAndExtractSessionToken(decode(cookie.value)) : null;
 };
 
 /** The verified, unsigned Better Auth session token from a `Cookie` header, or null. */
@@ -97,12 +93,6 @@ export const getSessionTokenFromCookieHeader = (cookieHeader: string | null): st
     return null;
   }
 
-  for (const cookieName of BETTER_AUTH_SESSION_COOKIE_NAMES) {
-    const signedValue = getSignedCookieValueFromHeader(cookieHeader, cookieName);
-    if (!signedValue) continue;
-    const token = verifyAndExtractSessionToken(signedValue);
-    if (token) return token;
-  }
-
-  return null;
+  const signedValue = getSignedCookieValueFromHeader(cookieHeader, SESSION_TOKEN_COOKIE_NAME);
+  return verifyAndExtractSessionToken(signedValue);
 };

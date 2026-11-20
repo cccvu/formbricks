@@ -6,6 +6,7 @@ import { isAuthProtectedRoute, isRouteAllowedForDomain } from "@/app/middleware/
 import { TRUSTED_PROXY_HOP_COUNT, WEBAPP_URL } from "@/lib/constants";
 import { FORMBRICKS_ORGANIZATION_ID_COOKIE, FORMBRICKS_WORKSPACE_ID_COOKIE } from "@/lib/localStorage";
 import { FORMBRICKS_CLIENT_IP_HEADER, resolveClientIp } from "@/lib/utils/client-ip";
+import { stripInvalidCookiePairs } from "@/lib/utils/cookie-header";
 import { getValidatedCallbackUrl } from "@/lib/utils/url";
 import { getProxySession } from "@/modules/auth/lib/proxy-session";
 import { MARKETING_LINKS_ROUTE, isMarketingLinkPath } from "@/modules/settings/lib/marketing-redirects";
@@ -123,9 +124,11 @@ export const proxy = async (originalRequest: NextRequest) => {
   if (ingestResponse) return ingestResponse;
 
   // Create a new Request object to override headers and add a unique request ID header
-  const request = new NextRequest(originalRequest, {
-    headers: new Headers(originalRequest.headers),
-  });
+  const headers = new Headers(originalRequest.headers);
+  // Before anything parses cookies (this request's own `cookies`, then every route and Better Auth via
+  // the forwarded headers): a non-token name can carry a `__Host-` cookie past the browser's prefix rules.
+  stripInvalidCookiePairs(headers);
+  const request = new NextRequest(originalRequest, { headers });
 
   const clientIp = resolveClientIp(request.headers, TRUSTED_PROXY_HOP_COUNT);
   if (clientIp) {

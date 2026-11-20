@@ -287,6 +287,33 @@ describe("proxy", () => {
     expect(response.headers.get(FORMBRICKS_CLIENT_IP_HEADER)).toBeNull();
   });
 
+  test("forwards no cookie whose name is not a token, so no parser can trim it into the __Host- name", async () => {
+    mockGetProxySession.mockResolvedValue(null);
+    const request = new NextRequest("http://localhost:3000/api/auth/get-session", {
+      headers: {
+        cookie: "\u00A0__Host-formbricks.session_token=planted; __Host-formbricks.session_token=real; a=1",
+      },
+    });
+
+    const response = await proxy(request);
+
+    expect(response.headers.get("x-middleware-request-cookie")).toBe(
+      "__Host-formbricks.session_token=real; a=1"
+    );
+    const proxiedRequest = mockGetProxySession.mock.calls[0][0] as NextRequest;
+    expect(proxiedRequest.headers.get("cookie")).toBe("__Host-formbricks.session_token=real; a=1");
+  });
+
+  test("forwards a valid Cookie header unchanged", async () => {
+    mockGetProxySession.mockResolvedValue(null);
+    const cookie = "__Host-formbricks.session_token=real;a=1";
+    const request = new NextRequest("http://localhost:3000/api/auth/get-session", { headers: { cookie } });
+
+    const response = await proxy(request);
+
+    expect(response.headers.get("x-middleware-request-cookie")).toBe(cookie);
+  });
+
   test("removes a caller-supplied private IP header when trusted-hop resolution fails", async () => {
     mockGetProxySession.mockResolvedValue(null);
     const request = new NextRequest("http://localhost:3000/api/auth/sign-in/email", {

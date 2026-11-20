@@ -16,6 +16,14 @@ vi.mock("@formbricks/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), 
 vi.mock("@/modules/auth/lib/session", () => ({ getSession: vi.fn() }));
 vi.mock("@/modules/auth/lib/session-revocation", () => ({ revokeSessionByToken: vi.fn() }));
 
+// An https deployment, whatever scheme the loaded .env uses: the cookie the route clears is then a
+// `__Host-` cookie, which a browser only lets a `Secure; Path=/` Set-Cookie overwrite.
+vi.mock("@/modules/auth/lib/auth-cookies", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/modules/auth/lib/auth-cookies")>()),
+  USE_SECURE_COOKIES: true,
+  SESSION_TOKEN_COOKIE_NAME: "__Host-formbricks.session_token",
+}));
+
 // Only the extraction is stubbed, and only because it verifies Better Auth's HMAC over the cookie —
 // minting a correctly signed one here would test the signature, which `session-cookie.test.ts` already
 // covers. The cookie NAMES stay real, since the clearing assertions below depend on them.
@@ -61,7 +69,7 @@ describe("GET /api/auth/sso/recovery/complete", () => {
     await GET(
       request(
         `${WEBAPP_URL}/api/auth/sso/recovery/complete?state=state-id`,
-        "formbricks.session_token=token-abc.signature"
+        "__Host-formbricks.session_token=token-abc.signature"
       )
     );
 
@@ -122,7 +130,7 @@ describe("GET /api/auth/sso/recovery/complete", () => {
     const response = await GET(
       request(
         `${WEBAPP_URL}/api/auth/sso/recovery/complete?state=state-id`,
-        "formbricks.session_token=token-abc.signature"
+        "__Host-formbricks.session_token=token-abc.signature"
       )
     );
 
@@ -146,13 +154,16 @@ describe("GET /api/auth/sso/recovery/complete", () => {
     const response = await GET(
       request(
         `${WEBAPP_URL}/api/auth/sso/recovery/complete?state=state-id`,
-        "formbricks.session_token=token-abc.signature"
+        "__Host-formbricks.session_token=token-abc.signature"
       )
     );
 
-    const setCookies = response.headers.getSetCookie().join("\n");
-    expect(setCookies).toContain("formbricks.session_token=;");
-    expect(setCookies).toContain("__Secure-formbricks.session_token=;");
+    const setCookies = response.headers.getSetCookie();
+    expect(setCookies).toHaveLength(1);
+    expect(setCookies[0]).toMatch(/^__Host-formbricks\.session_token=;/);
+    expect(setCookies[0]).toMatch(/;\s*Secure/i);
+    expect(setCookies[0]).toMatch(/;\s*Path=\/(;|$)/i);
+    expect(setCookies[0]).not.toMatch(/;\s*Domain=/i);
     expect(revokeSessionByToken).toHaveBeenCalled();
   });
 });

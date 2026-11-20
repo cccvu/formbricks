@@ -3,6 +3,7 @@ import { createClient } from "redis";
 import { vi } from "vitest";
 import { prisma } from "@formbricks/database";
 import { auth } from "@/modules/auth/lib/auth";
+import { SESSION_TOKEN_COOKIE_NAME } from "@/modules/auth/lib/auth-cookies";
 import { getEmailCodeDeviceCookieName } from "@/modules/auth/lib/email-code/device";
 import { EMAIL_CODE_REDIS_PREFIX } from "@/modules/auth/lib/email-code/limits";
 import { sendSignInCodeEmail } from "@/modules/email";
@@ -18,7 +19,6 @@ import { sendSignInCodeEmail } from "@/modules/email";
 export const ORIGIN = "http://localhost:3000";
 export const SEND_PATH = "/email-otp/send-verification-otp";
 export const SIGN_IN_PATH = "/sign-in/email-otp";
-const SESSION_COOKIE = "formbricks.session_token";
 
 type TRequestOptions = { origin?: string | null; cookie?: string; method?: string };
 
@@ -74,7 +74,11 @@ export const cookieHeader = (response: Response): string =>
 export const hasSessionCookie = (response: Response): boolean =>
   response.headers
     .getSetCookie()
-    .some((cookie) => cookie.startsWith(`${SESSION_COOKIE}=`) && !cookie.startsWith(`${SESSION_COOKIE}=;`));
+    .some(
+      (cookie) =>
+        cookie.startsWith(`${SESSION_TOKEN_COOKIE_NAME}=`) &&
+        !cookie.startsWith(`${SESSION_TOKEN_COOKIE_NAME}=;`)
+    );
 
 /** Just the trusted-device cookie from a response, ready for a `cookie` header. */
 export const deviceCookie = (response: Response): string => {

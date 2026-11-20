@@ -466,8 +466,8 @@ test.describe("Authentication Security Tests - Vulnerability Prevention", () => 
       const user = await users.create();
       await user.login();
 
-      // Better Auth's signed session cookie is `formbricks.session_token` (or the browser-enforced
-      // `__Secure-` prefix on HTTPS); replaces the NextAuth `next-auth.session-token` cookie (ENG-1054).
+      // Better Auth's signed session cookie is `formbricks.session_token` (`__Host-formbricks.session_token`
+      // on HTTPS); replaces the NextAuth `next-auth.session-token` cookie (ENG-1054).
       const sessionCookie = (await page.context().cookies()).find((cookie) =>
         cookie.name.includes("session_token")
       );

@@ -53,3 +53,29 @@ describe("USE_SECURE_COOKIES", () => {
     expect((await load()).USE_SECURE_COOKIES).toBe(false);
   });
 });
+
+describe("auth cookie names", () => {
+  beforeEach(() => {
+    constantsMock.AUTH_URL = undefined;
+    envMock.WEBAPP_URL = undefined;
+  });
+
+  test("are __Host- prefixed on https, so a sibling subdomain cannot set them", async () => {
+    constantsMock.AUTH_URL = "https://app.example.test";
+    const cookies = await load();
+
+    expect(cookies.AUTH_COOKIE_PREFIX).toBe("__Host-formbricks");
+    expect(cookies.SESSION_TOKEN_COOKIE_NAME).toBe("__Host-formbricks.session_token");
+    expect(cookies.AUTH_DEFAULT_COOKIE_ATTRIBUTES).toMatchObject({ secure: true, path: "/" });
+    expect(cookies.AUTH_DEFAULT_COOKIE_ATTRIBUTES).not.toHaveProperty("domain");
+  });
+
+  test("are unprefixed on http, where a __Host- cookie could not be stored", async () => {
+    constantsMock.AUTH_URL = "http://localhost:3000";
+    const cookies = await load();
+
+    expect(cookies.AUTH_COOKIE_PREFIX).toBe("formbricks");
+    expect(cookies.SESSION_TOKEN_COOKIE_NAME).toBe("formbricks.session_token");
+    expect(cookies.AUTH_DEFAULT_COOKIE_ATTRIBUTES).toMatchObject({ secure: false, path: "/" });
+  });
+});
