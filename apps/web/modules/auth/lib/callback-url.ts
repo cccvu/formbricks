@@ -48,4 +48,17 @@ export const getInviteTokenFromCallbackUrl = (
   return new URL(validatedCallbackUrl).searchParams.get("token");
 };
 
+/**
+ * Whether the validated callback URL is the invitation page with a token (`/invite?token=…`), so the login
+ * page can tell the visitor to sign in with the invited address. Purely from the URL: nothing is looked up.
+ * Unlike `getInviteTokenFromCallbackUrl`, any other path carrying a `token` parameter does not count.
+ */
+export const isInviteCallbackUrl = (callbackUrl: string | null | undefined, webAppUrl: string): boolean => {
+  const validatedCallbackUrl = getValidatedCallbackUrl(callbackUrl, webAppUrl);
+  if (!validatedCallbackUrl) return false;
+
+  const { pathname, searchParams } = new URL(validatedCallbackUrl);
+  return pathname === "/invite" && Boolean(searchParams.get("token"));
+};
+
 export const getSearchParamString = (value?: string | string[]): string => getSearchParamValue(value) ?? "";

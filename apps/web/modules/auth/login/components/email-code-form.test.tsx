@@ -209,8 +209,27 @@ describe("EmailCodeForm", () => {
 
     const accountExistence = /account|not found|no user|exists|registered|unknown/i;
     expect(container.textContent).not.toMatch(accountExistence);
-    for (const message of Object.values(copy)) {
+    // The invite hint says "account" by design, but it is static copy chosen from the callback URL alone,
+    // before any request, and reads the same for every address; it is covered by the tests below.
+    const { invite_hint: _inviteHint, ...answers } = copy;
+    for (const message of Object.values(answers)) {
       expect(message).not.toMatch(accountExistence);
     }
+  });
+
+  test("tells an invitee which address to use, on the email step only", async () => {
+    render(<EmailCodeForm resolvedCallbackPath="/invite?token=tok" isInvite />);
+
+    expect(screen.getByText(copy.invite_hint)).toBeInTheDocument();
+
+    await submitEmail();
+
+    expect(screen.queryByText(copy.invite_hint)).not.toBeInTheDocument();
+  });
+
+  test("shows no invite hint without an invitation", () => {
+    renderForm();
+
+    expect(screen.queryByText(copy.invite_hint)).not.toBeInTheDocument();
   });
 });

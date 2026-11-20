@@ -57,6 +57,8 @@ interface LoginFormProps {
   emailJustVerified?: boolean;
   prefilledEmail?: string;
   inviteToken?: string | null;
+  // The callback is the invitation page (`/invite?token=…`): the email code form says which address to use.
+  isInviteCallback?: boolean;
   resolvedCallbackPath: string;
   resolvedCallbackUrl: string;
 }
@@ -78,6 +80,7 @@ export const LoginForm = ({
   emailJustVerified,
   prefilledEmail,
   inviteToken,
+  isInviteCallback = false,
   resolvedCallbackPath,
   resolvedCallbackUrl,
 }: Readonly<LoginFormProps>) => {
@@ -263,7 +266,11 @@ export const LoginForm = ({
 
         <div className="space-y-2">
           {emailCodeAuthEnabled ? (
-            <EmailCodeForm prefilledEmail={prefilledEmail} resolvedCallbackPath={resolvedCallbackPath} />
+            <EmailCodeForm
+              prefilledEmail={prefilledEmail}
+              resolvedCallbackPath={resolvedCallbackPath}
+              isInvite={isInviteCallback}
+            />
           ) : (
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
               {TwoFactorComponent}

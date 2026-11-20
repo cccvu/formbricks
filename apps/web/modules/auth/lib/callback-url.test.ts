@@ -3,6 +3,7 @@ import {
   getInviteTokenFromCallbackUrl,
   getRelativeCallbackUrl,
   getSearchParamString,
+  isInviteCallbackUrl,
   resolveAuthCallbackUrl,
 } from "./callback-url";
 
@@ -94,5 +95,19 @@ describe("auth callback URL helpers", () => {
     expect(getSearchParamString("plain")).toBe("plain");
     expect(getSearchParamString(["first", "second"])).toBe("first");
     expect(getSearchParamString(undefined)).toBe("");
+  });
+
+  test("isInviteCallbackUrl is true only for the invitation page with a token", () => {
+    expect(isInviteCallbackUrl("http://localhost:3000/invite?token=abc123", WEBAPP_URL)).toBe(true);
+    expect(isInviteCallbackUrl("http://localhost:3000/invite?token=abc123&source=signin", WEBAPP_URL)).toBe(
+      true
+    );
+    // A token on any other path is not an invitation.
+    expect(isInviteCallbackUrl("http://localhost:3000/surveys?token=abc123", WEBAPP_URL)).toBe(false);
+    expect(isInviteCallbackUrl("http://localhost:3000/invite/extra?token=abc123", WEBAPP_URL)).toBe(false);
+    expect(isInviteCallbackUrl("http://localhost:3000/invite", WEBAPP_URL)).toBe(false);
+    expect(isInviteCallbackUrl("http://localhost:3000/invite?token=", WEBAPP_URL)).toBe(false);
+    expect(isInviteCallbackUrl("https://evil.example/invite?token=abc123", WEBAPP_URL)).toBe(false);
+    expect(isInviteCallbackUrl(null, WEBAPP_URL)).toBe(false);
   });
 });

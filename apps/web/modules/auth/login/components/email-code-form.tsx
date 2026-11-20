@@ -30,6 +30,8 @@ const isRateLimited = (error: TAuthClientError) => error?.status === 429;
 interface EmailCodeFormProps {
   prefilledEmail?: string;
   resolvedCallbackPath: string;
+  /** Signing in to accept an invitation: say which address to use. Set from the URL only, never a lookup. */
+  isInvite?: boolean;
 }
 
 /**
@@ -37,7 +39,11 @@ interface EmailCodeFormProps {
  * is worded so it never confirms whether an account exists for the address: sending always "succeeds",
  * and any rejected code gets the same generic error.
  */
-export const EmailCodeForm = ({ prefilledEmail, resolvedCallbackPath }: Readonly<EmailCodeFormProps>) => {
+export const EmailCodeForm = ({
+  prefilledEmail,
+  resolvedCallbackPath,
+  isInvite = false,
+}: Readonly<EmailCodeFormProps>) => {
   const router = useRouter();
   const { t } = useTranslation();
   const emailRef = useRef<HTMLInputElement>(null);
@@ -171,6 +177,9 @@ export const EmailCodeForm = ({ prefilledEmail, resolvedCallbackPath }: Readonly
       {/* Keyed so React mounts a fresh field per step instead of reusing the email field's controller. */}
       {step === "email" ? (
         <FormProvider key="email" {...emailForm}>
+          {isInvite && (
+            <p className="text-left text-sm text-slate-600">{t("auth.login.email_code.invite_hint")}</p>
+          )}
           <form onSubmit={emailForm.handleSubmit(onEmailSubmit)} className="space-y-2">
             <FormField
               control={emailForm.control}
