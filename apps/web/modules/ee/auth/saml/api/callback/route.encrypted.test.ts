@@ -64,8 +64,13 @@ describe("SAML callback with an encrypted assertion", () => {
     [
       "its plaintext is too costly to parse",
       nestedNamespaceAssertion(4000),
+      // The worker runs past the time budget or its heap limit; which comes first depends on the machine.
       [
-        expect.objectContaining({ stage: "parse_budget", reason: "time", decrypting: true }),
+        expect.objectContaining({
+          stage: "parse_budget",
+          reason: expect.stringMatching(/^(time|memory)$/),
+          decrypting: true,
+        }),
         "Refused a SAML response that was too costly to parse",
       ],
     ],
