@@ -97,6 +97,13 @@ const queueAccountDeletedEmail = (user: { id: string; email: string }): void => 
  * committed, so surfacing an error for a completed delete would be misleading.
  */
 export const accountDeletionAfterDelete: NonNullable<DeleteUserConfig["afterDelete"]> = async (user) => {
+  // Email-code sign-in: an always-on trail of the completed deletion, whatever the audit-log licence, and
+  // emitted first so a failing cleanup step below cannot drop it. Better Auth runs `afterDelete` once, after
+  // the user row is deleted, so this fires exactly once per real deletion. User id only, never the address.
+  if (EMAIL_CODE_AUTH_ENABLED) {
+    logger.info({ event: "auth_account_deleted", userId: user.id }, "Account deleted");
+  }
+
   await activateEmailAuditErasureIntent(user.id);
   await runPostCommitProjection("account_delete_organization_cleanup", () =>
     deleteUserOrganizationRelationships(user.id)

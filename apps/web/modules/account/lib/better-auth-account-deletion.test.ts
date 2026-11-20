@@ -29,7 +29,7 @@ vi.mock("@/lib/constants", async (importOriginal) => ({
   },
 }));
 vi.mock("@formbricks/database", () => ({ prisma: { invite: { deleteMany: vi.fn() } } }));
-vi.mock("@formbricks/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
+vi.mock("@formbricks/logger", () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock("@/lib/authzed/organization-membership", () => ({
   deleteUserOrganizationRelationships: vi.fn(),
 }));
@@ -233,6 +233,32 @@ describe("accountDeletionAfterDelete", () => {
       targetUserId: "user-1",
     });
     expect(capturePostHogEvent).toHaveBeenCalledWith("user-1", "delete_account");
+  });
+
+  test("emits no auth_account_deleted event with email codes off", async () => {
+    flags.emailCode = false;
+
+    await accountDeletionAfterDelete(user);
+
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  test("with email codes on, logs one auth_account_deleted event by user id, before any cleanup", async () => {
+    flags.emailCode = true;
+    try {
+      vi.mocked(activateEmailAuditErasureIntent).mockRejectedValueOnce(new Error("db down"));
+
+      await expect(accountDeletionAfterDelete(user)).rejects.toThrow("db down");
+
+      expect(logger.info).toHaveBeenCalledOnce();
+      expect(logger.info).toHaveBeenCalledWith(
+        { event: "auth_account_deleted", userId: "user-1" },
+        "Account deleted"
+      );
+      expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain("ada@example.com");
+    } finally {
+      flags.emailCode = false;
+    }
   });
 });
 
