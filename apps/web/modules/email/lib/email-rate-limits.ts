@@ -125,6 +125,15 @@ export const emailRateLimits: Record<TEmailType, TEmailRateLimit> = {
   // calendar day: 2 pools (shared, trusted device) x 10 a day, and a 24-hour window that starts at the
   // first send can straddle two calendar days, so up to 40. `email-rate-limits.test.ts` pins this.
   sign_in_code: { recipient: { total: limit(50, DAY) } },
+  // Account-change codes. Backstops only: each is sent by a server action that already limits the signed-in
+  // user (deletion 5 an hour, the current-address code 3 an hour), so these sit above those caps and only
+  // bound a recipient across accounts.
+  account_deletion_code: { recipient: { total: limit(10) } },
+  email_change_current_code: { recipient: { total: limit(10) } },
+  // The new address is someone's inbox whichever account asked, as for `email_change_verification`. Each
+  // mail here costs the requester a code from their CURRENT mailbox (3 an hour), so one account alone cannot
+  // spend this budget and keep the address's owner from receiving a code of their own.
+  email_change_new_code: { recipient: { total: limit(5) } },
   data_retention_notice: {},
   // One per export the user started, and starting one is already rate-limited per user.
   attachment_export: {},

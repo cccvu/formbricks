@@ -12,6 +12,7 @@ import {
   getInviteTokenFromCallbackUrl,
   getRelativeCallbackUrl,
   getSearchParamString,
+  isInviteCallbackUrl,
   resolveAuthCallbackUrl,
 } from "@/modules/auth/lib/callback-url";
 import { getIsMultiOrgEnabled } from "@/modules/ee/license-check/lib/utils";
@@ -61,6 +62,7 @@ export const LoginPage = async ({
         emailJustVerified={getSearchParamString(searchParams.verified) === "1"}
         prefilledEmail={getSearchParamString(searchParams.email)}
         inviteToken={inviteToken}
+        isInviteCallback={isInviteCallbackUrl(resolvedCallbackUrl, WEBAPP_URL)}
         resolvedCallbackPath={resolvedCallbackPath}
         resolvedCallbackUrl={resolvedCallbackUrl}
       />

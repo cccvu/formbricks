@@ -350,6 +350,8 @@ export const auth = betterAuth({
     // cleanup (sole-owner-org guard + org/invite removal, then Brevo + audit). Confirmation friction
     // is asymmetric and wired at the edges in Phase 6 — password for credential users, email-link for
     // SSO — so `sendDeleteAccountVerification` is intentionally NOT set here (it would email everyone).
+    // With EMAIL_CODE_AUTH_ENABLED every account confirms with an emailed code instead (Better Auth's delete
+    // token, minted in better-auth-account-deletion-request.ts and redeemed in-process).
     deleteUser: accountDeletionConfig,
   },
 
@@ -522,7 +524,9 @@ export const auth = betterAuth({
       totpOptions: { digits: 6, period: 30 },
       backupCodeOptions: { amount: 10, length: 10, storeBackupCodes: "encrypted" },
     }),
-    // Sign in with a code sent by email (EMAIL_CODE_AUTH_ENABLED). Not mounted at all when off. Ahead of
+    // Sign in with a code sent by email (EMAIL_CODE_AUTH_ENABLED), plus email change by codes for the profile
+    // actions (in-process only), and with it the 404s on /delete-user* over HTTP and on /two-factor/*.
+    // Not mounted at all when off. Ahead of
     // oauthProvider() so a pending MCP authorization only ever resumes with a session this plugin's
     // guards allowed (2FA and SSO accounts get none: email-code/guards.ts).
     ...(EMAIL_CODE_AUTH_ENABLED ? [emailCodePlugin()] : []),

@@ -9,11 +9,14 @@ import { EMAIL_AUTH_ENABLED } from "@/lib/constants";
 import type { AuthHookContext } from "@/modules/ee/sso/lib/better-auth-hooks";
 import { hasPendingInviteForEmail } from "./admission";
 import {
+  ACCOUNT_DELETION_PATHS,
+  EMAIL_CODE_IN_PROCESS_ONLY_PATHS,
   EMAIL_CODE_SEND_BODY_KEYS,
   EMAIL_CODE_SEND_PATH,
   EMAIL_CODE_SIGN_IN_BODY_KEYS,
   EMAIL_CODE_SIGN_IN_PATH,
   PASSWORD_ENDPOINT_PATHS,
+  TWO_FACTOR_PATH_PREFIX,
 } from "./constants";
 import { getEmailCodePool, setEmailCodeDeviceCookie } from "./device";
 import { type TEmailCodePool, consumeEmailCodeVerifyQuota } from "./limits";
@@ -29,10 +32,25 @@ export const invalidEmailCodeError = (): APIError =>
 
 const notFound = (): APIError => new APIError("NOT_FOUND");
 
-/** Paths this module guards. Used as the plugin hook matcher. */
+/**
+ * Paths this module guards. Used as the plugin hook matcher, so it only applies while the plugin is
+ * mounted (EMAIL_CODE_AUTH_ENABLED). Keyed on the declared endpoint path; a server-only endpoint
+ * (`createVerificationOTP`) has none, and is reachable from trusted server code alone.
+ */
 export const isEmailCodeGuardedPath = (path: string | undefined): boolean =>
   !!path &&
-  (path.startsWith("/email-otp/") || path === EMAIL_CODE_SIGN_IN_PATH || PASSWORD_ENDPOINT_PATHS.has(path));
+  (path.startsWith("/email-otp/") ||
+    path === EMAIL_CODE_SIGN_IN_PATH ||
+    PASSWORD_ENDPOINT_PATHS.has(path) ||
+    ACCOUNT_DELETION_PATHS.has(path) ||
+    path.startsWith(TWO_FACTOR_PATH_PREFIX));
+
+/**
+ * An HTTP request through the router, as opposed to an in-process `auth.api.*` call. The router always
+ * passes the `Request`; a server action passes headers only. A caller that hands `auth.api` a request is
+ * treated as HTTP, which only ever closes more.
+ */
+const isHttpRequest = (ctx: AuthHookContext): boolean => !!ctx.request;
 
 const assertTrustedOrigin = (ctx: AuthHookContext): void => {
   const origin = ctx.headers?.get("origin");
@@ -110,8 +128,22 @@ export const emailCodeBeforeHandler = async (ctx: AuthHookContext) => {
     if (!EMAIL_AUTH_ENABLED) throw notFound();
     return;
   }
+  // No legitimate caller with email codes on (see TWO_FACTOR_PATH_PREFIX), in-process included.
+  if (path.startsWith(TWO_FACTOR_PATH_PREFIX)) throw notFound();
+  // Deletion runs only through the code action (in-process); the HTTP routes would be a password oracle
+  // and an unthrottled place to guess deletion codes.
+  if (ACCOUNT_DELETION_PATHS.has(path)) {
+    if (isHttpRequest(ctx)) throw notFound();
+    return;
+  }
   if (path === EMAIL_CODE_SEND_PATH) return handleSendBefore(ctx);
-  // Only send is served under /email-otp/*. Anything a future plugin version adds there stays closed.
+  // Email change runs only through the profile actions, which take the address from the session and
+  // apply the per-user limits. Over HTTP it does not exist.
+  if (EMAIL_CODE_IN_PROCESS_ONLY_PATHS.has(path)) {
+    if (isHttpRequest(ctx)) throw notFound();
+    return;
+  }
+  // Nothing else is served under /email-otp/*. Anything a future plugin version adds there stays closed.
   if (path.startsWith("/email-otp/")) throw notFound();
   if (path === EMAIL_CODE_SIGN_IN_PATH) await handleSignInBefore(ctx);
 };

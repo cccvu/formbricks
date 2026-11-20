@@ -127,6 +127,9 @@ describe("emailRateLimits", () => {
     );
     expect(withTotal.sort()).toEqual(
       [
+        "account_deletion_code",
+        "email_change_current_code",
+        "email_change_new_code",
         "email_change_verification",
         "email_verification",
         "password_reset",
@@ -151,6 +154,22 @@ describe("emailRateLimits", () => {
 
     expect(backstop?.interval).toBe(24 * 60 * 60);
     expect(backstop?.allowedPerInterval).toBeGreaterThan(pools * 2 * dailySendCap);
+  });
+});
+
+// The account-code mails are sent by actions that cap the signed-in user first. A backstop at or below one of
+// those caps would refuse a mail the action had allowed, after the code was minted: the user would wait for a
+// code that never comes.
+describe("account-change code backstops", () => {
+  test.each([
+    ["account_deletion_code", rateLimitConfigs.actions.accountDeletion],
+    ["email_change_current_code", rateLimitConfigs.actions.emailUpdate],
+    ["email_change_new_code", rateLimitConfigs.actions.emailUpdate],
+  ] as const)("%s sits above what one user's action cap lets through", (emailType, actionCap) => {
+    const backstop = emailRateLimits[emailType].recipient?.total;
+
+    expect(backstop?.interval).toBe(actionCap.interval);
+    expect(backstop?.allowedPerInterval).toBeGreaterThan(actionCap.allowedPerInterval);
   });
 });
 

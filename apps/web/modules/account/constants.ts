@@ -17,3 +17,9 @@ export const ACCOUNT_DELETED_PATH = "/auth/account-deleted";
 // on it to show a localized warning, so the throw and the match share one constant and can't drift apart.
 export const ACCOUNT_DELETION_SOLE_OWNER_BLOCK_MESSAGE =
   "You are the only owner of this organization. Please transfer ownership to another member first.";
+
+// Answered by `deleteAccountWithCodeAction` for a code that is wrong, expired, already used or someone
+// else's (Better Auth's INVALID_TOKEN). One message for all of them, so the answer reveals nothing about
+// which. The modal matches on it to show a localized message, like the sole-owner one above.
+export const ACCOUNT_DELETION_INVALID_CODE_MESSAGE =
+  "This code is invalid or has expired. Request a new one.";

@@ -21,8 +21,15 @@ import {
   requireDeletionConfirmationBeforeHandler,
 } from "./better-auth-account-deletion";
 
+const { flags } = vi.hoisted(() => ({ flags: { emailCode: false } }));
+vi.mock("@/lib/constants", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/constants")>()),
+  get EMAIL_CODE_AUTH_ENABLED() {
+    return flags.emailCode;
+  },
+}));
 vi.mock("@formbricks/database", () => ({ prisma: { invite: { deleteMany: vi.fn() } } }));
-vi.mock("@formbricks/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
+vi.mock("@formbricks/logger", () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock("@/lib/authzed/organization-membership", () => ({
   deleteUserOrganizationRelationships: vi.fn(),
 }));
@@ -227,6 +234,32 @@ describe("accountDeletionAfterDelete", () => {
     });
     expect(capturePostHogEvent).toHaveBeenCalledWith("user-1", "delete_account");
   });
+
+  test("emits no auth_account_deleted event with email codes off", async () => {
+    flags.emailCode = false;
+
+    await accountDeletionAfterDelete(user);
+
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  test("with email codes on, logs one auth_account_deleted event by user id, before any cleanup", async () => {
+    flags.emailCode = true;
+    try {
+      vi.mocked(activateEmailAuditErasureIntent).mockRejectedValueOnce(new Error("db down"));
+
+      await expect(accountDeletionAfterDelete(user)).rejects.toThrow("db down");
+
+      expect(logger.info).toHaveBeenCalledOnce();
+      expect(logger.info).toHaveBeenCalledWith(
+        { event: "auth_account_deleted", userId: "user-1" },
+        "Account deleted"
+      );
+      expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain("ada@example.com");
+    } finally {
+      flags.emailCode = false;
+    }
+  });
 });
 
 afterEach(() => {
@@ -245,10 +278,13 @@ describe("accountDeletionConfig", () => {
 const makeDeleteCtx = (overrides: {
   path?: string;
   body?: unknown;
+  request?: Request;
 }): Parameters<typeof requireDeletionConfirmationBeforeHandler>[0] =>
-  ({ path: overrides.path ?? "/delete-user", body: overrides.body }) as unknown as Parameters<
-    typeof requireDeletionConfirmationBeforeHandler
-  >[0];
+  ({
+    path: overrides.path ?? "/delete-user",
+    body: overrides.body,
+    request: overrides.request,
+  }) as unknown as Parameters<typeof requireDeletionConfirmationBeforeHandler>[0];
 
 describe("requireDeletionConfirmationBeforeHandler (delete-user freshAge guard)", () => {
   test("allows the request when a password is supplied", async () => {
@@ -284,6 +320,52 @@ describe("requireDeletionConfirmationBeforeHandler (delete-user freshAge guard)"
   });
 
   test("ignores non-delete-user paths", async () => {
+    await expect(
+      requireDeletionConfirmationBeforeHandler(makeDeleteCtx({ path: "/sign-out", body: {} }))
+    ).resolves.toBeUndefined();
+  });
+});
+
+// With email-code sign-in there is no password, and the emailed code is the only factor. The route is
+// in-process only; this hook runs before the email-code guard, so it answers HTTP the same way (404).
+describe("requireDeletionConfirmationBeforeHandler with email codes on", () => {
+  beforeEach(() => {
+    flags.emailCode = true;
+  });
+  afterEach(() => {
+    flags.emailCode = false;
+  });
+
+  const httpRequest = () => new Request("https://app.example.test/api/auth/delete-user", { method: "POST" });
+
+  test("accepts a deletion code in-process", async () => {
+    await expect(
+      requireDeletionConfirmationBeforeHandler(makeDeleteCtx({ body: { token: "48207135" } }))
+    ).resolves.toBeUndefined();
+  });
+
+  test.each([
+    ["a password", { password: "Passw0rd!" }],
+    ["a password alongside a code", { password: "Passw0rd!", token: "48207135" }],
+    ["no factor", {}],
+    ["no body", undefined],
+  ])("refuses %s in-process", async (_name, body) => {
+    await expect(requireDeletionConfirmationBeforeHandler(makeDeleteCtx({ body }))).rejects.toMatchObject({
+      status: "BAD_REQUEST",
+    });
+  });
+
+  test.each([
+    ["a password", { password: "Passw0rd!" }],
+    ["a code", { token: "48207135" }],
+    ["no factor", {}],
+  ])("answers 404 over HTTP whatever the body carries (%s)", async (_name, body) => {
+    await expect(
+      requireDeletionConfirmationBeforeHandler(makeDeleteCtx({ body, request: httpRequest() }))
+    ).rejects.toMatchObject({ status: "NOT_FOUND" });
+  });
+
+  test("still ignores other paths", async () => {
     await expect(
       requireDeletionConfirmationBeforeHandler(makeDeleteCtx({ path: "/sign-out", body: {} }))
     ).resolves.toBeUndefined();

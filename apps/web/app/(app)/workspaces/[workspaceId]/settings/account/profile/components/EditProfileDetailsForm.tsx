@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { TUser, TUserUpdateInput, ZUser, ZUserEmail } from "@formbricks/types/user";
+import { EmailChangeCodeModal } from "@/app/(app)/workspaces/[workspaceId]/settings/account/profile/components/email-change-code-modal";
 import { PasswordConfirmationModal } from "@/app/(app)/workspaces/[workspaceId]/settings/account/profile/components/password-confirmation-modal";
 import { appLanguages, sortedAppLanguages } from "@/lib/i18n/utils";
 import { getFormattedErrorMessage } from "@/lib/utils/error-message";
@@ -35,12 +36,15 @@ interface IEditProfileDetailsFormProps {
   readonly user: TUser;
   readonly isPasswordResetEnabled?: boolean;
   readonly emailVerificationDisabled: boolean;
+  /** Email-code sign-in: the address changes through emailed codes, not a password. */
+  readonly emailCodeAuthEnabled?: boolean;
 }
 
 export const EditProfileDetailsForm = ({
   user,
   isPasswordResetEnabled,
   emailVerificationDisabled,
+  emailCodeAuthEnabled = false,
 }: IEditProfileDetailsFormProps) => {
   const { t } = useTranslation();
 
@@ -58,6 +62,7 @@ export const EditProfileDetailsForm = ({
 
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [emailChangeTarget, setEmailChangeTarget] = useState<string | null>(null);
   const { signOut: signOutWithAudit } = useSignOut({ id: user.id, email: user.email });
 
   const handleConfirmPassword = async (password: string) => {
@@ -111,8 +116,48 @@ export const EditProfileDetailsForm = ({
     setShowModal(false);
   };
 
+  /**
+   * With email-code sign-in the address never goes through `updateUserAction` (which refuses it): name and
+   * language save as usual, and a new address opens the code modal.
+   */
+  const onSubmitWithEmailCodes = async (data: TEditProfileNameForm) => {
+    const { dirtyFields } = form.formState;
+    const emailChanged = data.email !== user.email;
+    const update: TUserUpdateInput = {};
+    if (dirtyFields.name) update.name = data.name.trim();
+    if (dirtyFields.locale) update.locale = data.locale;
+
+    if (Object.keys(update).length > 0) {
+      try {
+        const result = await updateUserAction(update);
+        if (!result?.data) {
+          toast.error(
+            (result && getFormattedErrorMessage(result)) || t("common.something_went_wrong_please_try_again")
+          );
+          return;
+        }
+      } catch (error) {
+        toast.error(`${t("common.error")}: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+      toast.success(t("workspace.settings.profile.profile_updated_successfully"));
+      if (!emailChanged) {
+        window.location.reload();
+        form.reset(data);
+        return;
+      }
+      // Saved: only the address is still pending, so only it stays dirty.
+      form.reset({ ...data, email: user.email });
+      form.setValue("email", data.email, { shouldDirty: true });
+    }
+
+    if (emailChanged) setEmailChangeTarget(data.email);
+  };
+
   const onSubmit: SubmitHandler<TEditProfileNameForm> = async (data) => {
-    if (data.email !== user.email) {
+    if (emailCodeAuthEnabled) {
+      await onSubmitWithEmailCodes(data);
+    } else if (data.email !== user.email) {
       setShowModal(true);
     } else {
       try {
@@ -288,13 +333,24 @@ export const EditProfileDetailsForm = ({
         </form>
       </FormProvider>
 
-      <PasswordConfirmationModal
-        open={showModal}
-        setOpen={setShowModal}
-        oldEmail={user.email}
-        newEmail={form.getValues("email") || user.email}
-        onConfirm={handleConfirmPassword}
-      />
+      {emailCodeAuthEnabled ? (
+        <EmailChangeCodeModal
+          open={emailChangeTarget !== null}
+          setOpen={(open) => {
+            if (!open) setEmailChangeTarget(null);
+          }}
+          currentEmail={user.email}
+          newEmail={emailChangeTarget ?? user.email}
+        />
+      ) : (
+        <PasswordConfirmationModal
+          open={showModal}
+          setOpen={setShowModal}
+          oldEmail={user.email}
+          newEmail={form.getValues("email") || user.email}
+          onConfirm={handleConfirmPassword}
+        />
+      )}
     </>
   );
 };

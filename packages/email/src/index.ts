@@ -7,6 +7,11 @@ export { AccountDeletedEmail } from "../emails/auth/account-deleted-email";
 export { SsoRecoveryFactorsRemovedEmail } from "../emails/auth/sso-recovery-factors-removed-email";
 export { SsoSignInHintEmail } from "../emails/auth/sso-sign-in-hint-email";
 export { SignInCodeEmail } from "../emails/auth/sign-in-code-email";
+export {
+  AccountCodeEmail,
+  getAccountCodeEmailSubject,
+  type TAccountCodePurpose,
+} from "../emails/auth/account-code-email";
 export { MemberRetentionNoticeEmail } from "../emails/retention/member-retention-notice-email";
 export {
   AttachmentExportFailedEmail,
@@ -41,6 +46,7 @@ export {
   renderSsoRecoveryFactorsRemovedEmail,
   renderSsoSignInHintEmail,
   renderSignInCodeEmail,
+  renderAccountCodeEmail,
   renderSurveyRetentionNoticeEmail,
   renderMemberRetentionNoticeEmail,
   renderAttachmentExportReadyEmail,

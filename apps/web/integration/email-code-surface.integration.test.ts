@@ -35,16 +35,20 @@ vi.mock("@/modules/auth/lib/email-code/constants", async (importOriginal) => ({
   EMAIL_CODE_SEND_FLOOR_MS: 50,
 }));
 
-const OTHER_EMAIL_OTP_ENDPOINTS = [
+/** Mounted for in-process use by the account-change actions; their HTTP routes answer 404 (below). */
+const IN_PROCESS_EMAIL_OTP_ENDPOINTS = [
   "createVerificationOTP",
+  "requestEmailChangeEmailOTP",
+  "changeEmailEmailOTP",
+];
+
+const OTHER_EMAIL_OTP_ENDPOINTS = [
   "getVerificationOTP",
   "checkVerificationOTP",
   "verifyEmailOTP",
   "requestPasswordResetEmailOTP",
   "forgetPasswordEmailOTP",
   "resetPasswordEmailOTP",
-  "requestEmailChangeEmailOTP",
-  "changeEmailEmailOTP",
 ];
 
 const CLOSED_PATHS = [
@@ -80,9 +84,11 @@ describe("email-code sign-in: endpoint surface", () => {
     expect(EMAIL_AUTH_ENABLED).toBe(false);
   });
 
-  test("auth.api exposes send and sign-in, and none of the other emailOTP endpoints", () => {
+  test("auth.api exposes send, sign-in and the in-process email-change trio, and no other emailOTP endpoint", () => {
     const api = Object.keys(auth.api);
-    expect(api).toEqual(expect.arrayContaining(["sendVerificationOTP", "signInEmailOTP"]));
+    expect(api).toEqual(
+      expect.arrayContaining(["sendVerificationOTP", "signInEmailOTP", ...IN_PROCESS_EMAIL_OTP_ENDPOINTS])
+    );
     expect(api.filter((name) => OTHER_EMAIL_OTP_ENDPOINTS.includes(name))).toEqual([]);
   });
 

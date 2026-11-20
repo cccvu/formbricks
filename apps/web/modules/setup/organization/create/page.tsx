@@ -6,7 +6,7 @@ import { getHasNoOrganizations } from "@/lib/instance/service";
 import { getOrganizationsByUserId } from "@/lib/organization/service";
 import { getUser } from "@/lib/user/service";
 import { getTranslate } from "@/lingodotdev/server";
-import { requiresPasswordConfirmationForAccountDeletion } from "@/modules/account/lib/account-deletion-auth";
+import { getAccountDeletionConfirmationMethod } from "@/modules/account/lib/account-deletion-auth";
 import { getSession } from "@/modules/auth/lib/session";
 import { getIsMultiOrgEnabled } from "@/modules/ee/license-check/lib/utils";
 import { RemovedFromOrganization } from "@/modules/setup/organization/create/components/removed-from-organization";
@@ -44,7 +44,7 @@ export const CreateOrganizationPage = async () => {
       <RemovedFromOrganization
         user={user}
         isFormbricksCloud={IS_FORMBRICKS_CLOUD}
-        requiresPasswordConfirmation={requiresPasswordConfirmationForAccountDeletion(user)}
+        accountDeletionConfirmationMethod={getAccountDeletionConfirmationMethod(user)}
       />
     );
   }

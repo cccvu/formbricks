@@ -184,8 +184,10 @@ describe("rateLimitConfigs", () => {
       const actionConfigs = Object.keys(rateLimitConfigs.actions);
       expect(actionConfigs).toEqual([
         "emailUpdate",
+        "emailChangeCode",
         "passwordResetRequest",
         "accountDeletion",
+        "accountDeletionCode",
         "surveyFollowUp",
         "sendLinkSurveyEmail",
         "validateSurveyPin",
@@ -296,8 +298,10 @@ describe("rateLimitConfigs", () => {
         auth.emailToken,
         api.mcpAuth,
         actions.emailUpdate,
+        actions.emailChangeCode,
         actions.passwordResetRequest,
         actions.accountDeletion,
+        actions.accountDeletionCode,
         actions.surveyFollowUp,
         actions.sendLinkSurveyEmail,
         actions.validateSurveyPin,

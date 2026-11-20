@@ -4,6 +4,7 @@ import { DeleteAccount } from "@/app/(app)/workspaces/[workspaceId]/settings/acc
 import { EditProfileDetailsForm } from "@/app/(app)/workspaces/[workspaceId]/settings/account/profile/components/EditProfileDetailsForm";
 import { SettingsCard } from "@/app/(app)/workspaces/[workspaceId]/settings/components/SettingsCard";
 import {
+  EMAIL_CODE_AUTH_ENABLED,
   EMAIL_VERIFICATION_DISABLED,
   ENTERPRISE_LICENSE_REQUEST_FORM_URL,
   IS_FORMBRICKS_CLOUD,
@@ -12,7 +13,7 @@ import {
 import { getOrganizationsWhereUserIsSingleOwner } from "@/lib/organization/service";
 import { getUser } from "@/lib/user/service";
 import { getTranslate } from "@/lingodotdev/server";
-import { requiresPasswordConfirmationForAccountDeletion } from "@/modules/account/lib/account-deletion-auth";
+import { getAccountDeletionConfirmationMethod } from "@/modules/account/lib/account-deletion-auth";
 import { getSession } from "@/modules/auth/lib/session";
 import { LiteLicenseTip } from "@/modules/ee/license-check/components/lite-license-tip";
 import { getEnterpriseLicense } from "@/modules/ee/license-check/lib/license";
@@ -45,11 +46,17 @@ const Page = async () => {
     ? getOrganizationBillingPath(layoutData.organization.id, IS_FORMBRICKS_CLOUD)
     : "/";
 
+  // With email-code sign-in there is no password to protect with a second factor, and an account with
+  // 2FA could no longer sign in by code (its setup is refused server-side too), so the card is hidden.
+  const showSecurityCard = user.identityProvider === "email" && !EMAIL_CODE_AUTH_ENABLED;
   const canUseTwoFactorAuth = isTwoFactorAuthEnabled || user.twoFactorEnabled;
   // Self-hosted without any license key: 2FA is part of the free Lite license, so offer that instead
   // of the paid upgrade.
   const showTwoFactorLiteLicenseTip =
-    !canUseTwoFactorAuth && !IS_FORMBRICKS_CLOUD && (await getEnterpriseLicense()).status === "no-license";
+    showSecurityCard &&
+    !canUseTwoFactorAuth &&
+    !IS_FORMBRICKS_CLOUD &&
+    (await getEnterpriseLicense()).status === "no-license";
 
   let securityContent: React.ReactNode;
   if (canUseTwoFactorAuth) {
@@ -84,7 +91,7 @@ const Page = async () => {
   }
 
   const isPasswordResetEnabled = !PASSWORD_RESET_DISABLED && user.identityProvider === "email";
-  const requiresPasswordConfirmation = requiresPasswordConfirmationForAccountDeletion(user);
+  const accountDeletionConfirmationMethod = getAccountDeletionConfirmationMethod(user);
 
   return (
     <PageContentWrapper>
@@ -97,9 +104,10 @@ const Page = async () => {
             user={user}
             emailVerificationDisabled={EMAIL_VERIFICATION_DISABLED}
             isPasswordResetEnabled={isPasswordResetEnabled}
+            emailCodeAuthEnabled={EMAIL_CODE_AUTH_ENABLED}
           />
         </SettingsCard>
-        {user.identityProvider === "email" && (
+        {showSecurityCard && (
           <SettingsCard
             title={t("common.security")}
             description={t("workspace.settings.profile.security_description")}
@@ -117,7 +125,7 @@ const Page = async () => {
             user={user}
             organizationsWithSingleOwner={organizationsWithSingleOwner}
             isMultiOrgEnabled={isMultiOrgEnabled}
-            requiresPasswordConfirmation={requiresPasswordConfirmation}
+            accountDeletionConfirmationMethod={accountDeletionConfirmationMethod}
           />
         </SettingsCard>
         <IdBadge id={user.id} label={t("common.profile_id")} variant="column" />

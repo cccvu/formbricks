@@ -58,3 +58,39 @@ export const PASSWORD_ENDPOINT_PATHS = new Set([
   "/reset-password",
   "/reset-password/:token",
 ]);
+
+/**
+ * Account changes by email code (passwordless account lifecycle). Better Auth's email-change endpoints run
+ * only in-process, from the profile server actions: over HTTP they answer 404 whatever the spelling.
+ */
+export const EMAIL_CODE_REQUEST_EMAIL_CHANGE_PATH = "/email-otp/request-email-change";
+export const EMAIL_CODE_CHANGE_EMAIL_PATH = "/email-otp/change-email";
+export const EMAIL_CODE_IN_PROCESS_ONLY_PATHS = new Set([
+  EMAIL_CODE_REQUEST_EMAIL_CHANGE_PATH,
+  EMAIL_CODE_CHANGE_EMAIL_PATH,
+]);
+
+/**
+ * Account deletion endpoints. With email codes on there is no password to confirm with, and the account
+ * is deleted only by `deleteAccountWithCodeAction` (in-process), so over HTTP these answer 404: that closes
+ * `POST /delete-user` as a password oracle and as a place to guess deletion codes without the action's
+ * per-user limit.
+ */
+export const ACCOUNT_DELETION_PATHS = new Set(["/delete-user", "/delete-user/callback"]);
+
+/**
+ * Two-factor endpoints (every path the twoFactor plugin declares). Setting up or verifying a second factor
+ * needs a password, and an account with 2FA cannot sign in by code, so with email codes on they have no
+ * legitimate caller, over HTTP or in-process: enabling one would lock the account out.
+ */
+export const TWO_FACTOR_PATH_PREFIX = "/two-factor/";
+
+/**
+ * Account codes (delete the account, confirm or verify an email change): 8 digits, valid 10 minutes, single
+ * use. The email-change codes are Better Auth's own (same options as sign-in, so 5 wrong guesses burn one);
+ * the deletion code is Better Auth's delete-account token, minted by us as 8 digits.
+ */
+export const ACCOUNT_CODE_LENGTH = EMAIL_CODE_LENGTH;
+export const ACCOUNT_CODE_TTL_SECONDS = EMAIL_CODE_TTL_SECONDS;
+/** Better Auth's identifier for a delete-account token (`deleteUserCallback` consumes `<prefix><token>`). */
+export const ACCOUNT_DELETION_TOKEN_IDENTIFIER_PREFIX = "delete-account-";

@@ -6,6 +6,7 @@ import type { Session } from "@formbricks/types/auth";
 import { TOrganization } from "@formbricks/types/organizations";
 import { TUser } from "@formbricks/types/user";
 import { DeleteAccountModal } from "@/modules/account/components/DeleteAccountModal";
+import type { TAccountDeletionConfirmationMethod } from "@/modules/account/lib/account-deletion-auth";
 import { Button } from "@/modules/ui/components/button";
 import { TooltipRenderer } from "@/modules/ui/components/tooltip";
 
@@ -15,7 +16,7 @@ interface DeleteAccountProps {
   user: TUser;
   organizationsWithSingleOwner: TOrganization[];
   isMultiOrgEnabled: boolean;
-  requiresPasswordConfirmation: boolean;
+  accountDeletionConfirmationMethod: TAccountDeletionConfirmationMethod;
 }
 
 export const DeleteAccount = ({
@@ -24,7 +25,7 @@ export const DeleteAccount = ({
   user,
   organizationsWithSingleOwner,
   isMultiOrgEnabled,
-  requiresPasswordConfirmation,
+  accountDeletionConfirmationMethod,
 }: Readonly<DeleteAccountProps>) => {
   const [isModalOpen, setModalOpen] = useState(false);
   const isDeleteDisabled = !isMultiOrgEnabled && organizationsWithSingleOwner.length > 0;
@@ -37,7 +38,7 @@ export const DeleteAccount = ({
   return (
     <div>
       <DeleteAccountModal
-        requiresPasswordConfirmation={requiresPasswordConfirmation}
+        confirmationMethod={accountDeletionConfirmationMethod}
         open={isModalOpen}
         setOpen={setModalOpen}
         user={user}

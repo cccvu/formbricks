@@ -1,6 +1,17 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { IdentityProvider } from "@formbricks/database/prisma";
-import { requiresPasswordConfirmationForAccountDeletion } from "./account-deletion-auth";
+import {
+  getAccountDeletionConfirmationMethod,
+  requiresPasswordConfirmationForAccountDeletion,
+} from "./account-deletion-auth";
+
+const { flags } = vi.hoisted(() => ({ flags: { emailCode: false } }));
+vi.mock("@/lib/constants", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/constants")>()),
+  get EMAIL_CODE_AUTH_ENABLED() {
+    return flags.emailCode;
+  },
+}));
 
 /**
  * Every value of the Prisma `IdentityProvider` enum, split by which of the two deletion flows it gets:
@@ -29,4 +40,28 @@ describe("account deletion auth requirements", () => {
     expect(new Set(covered).size).toBe(covered.length); // no provider classified twice
     expect([...covered].sort()).toEqual([...Object.values(IdentityProvider)].sort());
   });
+});
+
+describe("getAccountDeletionConfirmationMethod", () => {
+  afterEach(() => {
+    flags.emailCode = false;
+  });
+
+  test.each(PASSWORD_BACKED)("flag off: %s users confirm with their password", (identityProvider) => {
+    expect(getAccountDeletionConfirmationMethod({ identityProvider })).toBe("password");
+  });
+
+  test.each(SSO_ONLY)("flag off: %s users confirm by emailed link", (identityProvider) => {
+    expect(getAccountDeletionConfirmationMethod({ identityProvider })).toBe("email_link");
+  });
+
+  // No account has a password with email codes on, SSO accounts included.
+  test.each([...PASSWORD_BACKED, ...SSO_ONLY])(
+    "flag on: %s users confirm by emailed code, and never by password",
+    (identityProvider) => {
+      flags.emailCode = true;
+      expect(getAccountDeletionConfirmationMethod({ identityProvider })).toBe("email_code");
+      expect(requiresPasswordConfirmationForAccountDeletion({ identityProvider })).toBe(false);
+    }
+  );
 });
