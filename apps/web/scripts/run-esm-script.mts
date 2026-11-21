@@ -42,7 +42,10 @@ const server = await createServer({
   logLevel: "error",
   appType: "custom",
   plugins: [tsconfigPaths()],
-  server: { middlewareMode: true, hmr: false, ws: false },
+  // No file watcher: a one-shot run never reloads, and watching apps/web takes thousands of inotify
+  // watches; where the limit is low (8192 on older kernels), two runs at once hit ENOSPC and the child
+  // dies on the watcher's unhandled error before the script starts.
+  server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   optimizeDeps: { noDiscovery: true, include: [] },
   ssr: {
     resolve: {
