@@ -31,6 +31,14 @@ const IDP_CERTIFICATE = createTestIdp()
   .replaceAll(/\s/g, "");
 const IDP = { publicKey: IDP_CERTIFICATE };
 
+/**
+ * A connection listing eight certificates, as jackson passes them (comma-separated). saml20 runs the whole signature
+ * check once per certificate when none matches, so this costs eight times what `IDP` does. The responses below cost
+ * about the budget for one certificate on a fast machine, so with one their outcome would depend on its speed; with
+ * eight they are far past it on any machine, and what is shown is that the budget cuts them off.
+ */
+const ROLLOVER_IDP = { publicKey: Array.from({ length: 8 }, () => IDP_CERTIFICATE).join(",") };
+
 const RESPONSE =
   '<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="_resp1" InResponseTo="_req1">' +
   '<saml2:Issuer xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion">https://idp.example.com</saml2:Issuer>' +
@@ -61,12 +69,11 @@ const wideSignedResponse = (elements: number) =>
   `<data>${"<n>v</n>".repeat(elements)}</data></samlp:Response>`;
 
 /**
- * Passes every byte bound (~11,600 of the 12,000 markup), yet jackson's signature check on it takes ~450 ms against a
- * parse of ~10 ms. The signature is not valid, and does not need to be: the cost is spent before it is checked.
+ * Passes every byte bound (~11,600 of the 12,000 markup), yet jackson's signature check on it takes ~200-450 ms per
+ * certificate, depending on the machine, against a parse of ~10 ms. The signature is not valid, and does not need to
+ * be: the cost is spent before it is checked.
  */
 const WIDE_SIGNED_RESPONSE = wideSignedResponse(5_800);
-
-/** The same shape at a size whose check takes ~50 ms per certificate: within the budget for one, not for eight. */
 
 describe("probeSamlResponseParse", () => {
   // The main-thread allowance is per process, so each test would inherit what the ones before it spent, and on a slow
@@ -103,7 +110,8 @@ describe("probeSamlResponseParse", () => {
   // canonicalizes what the signature references, which costs far more (ENG-4108). The worker runs that step inside the
   // budget, so a response whose check is too costly is cut off before jackson. That the check runs per certificate,
   // and so costs several times as much on a rollover connection, is saml20's own behaviour; the worker test proves the
-  // worker invokes it, and a per-certificate wall-clock assertion only held in a narrow machine-speed band.
+  // worker invokes it, and a per-certificate wall-clock assertion only held in a narrow machine-speed band. So the
+  // connection here lists several certificates, which puts the check far past the budget on any machine.
   test("cuts off a response inside every bound whose signature check is too costly", async () => {
     const response = b64(WIDE_SIGNED_RESPONSE);
     expect(checkSamlResponseBounds(response)).toBeNull();
@@ -111,7 +119,7 @@ describe("probeSamlResponseParse", () => {
     await probeSamlResponseParse(b64(RESPONSE), KEY, IDP);
 
     const started = performance.now();
-    const probe = await probeSamlResponseParse(response, KEY, IDP);
+    const probe = await probeSamlResponseParse(response, KEY, ROLLOVER_IDP);
 
     expect(probe).toEqual({ outcome: "too_costly", reason: "time" });
     expect(performance.now() - started).toBeLessThan(SAML_PARSE_TIME_BUDGET_MS + 400);
@@ -168,7 +176,12 @@ describe("probeSamlResponseParse", () => {
       const started = performance.now();
       const probe = await probeSamlResponseParse(response, sp.privateKey, IDP);
 
-      expect(probe).toEqual(OPENED_TOO_COSTLY);
+      // Its parse is slow and grows past the worker's heap limit; which of the two stops it first depends on the
+      // machine (a fast one reaches the heap limit first). Either way the worker is stopped before jackson sees it.
+      expect(probe).toEqual({
+        ...OPENED_TOO_COSTLY,
+        cause: { reason: expect.stringMatching(/^(time|memory)$/) },
+      });
       expect(performance.now() - started).toBeLessThan(SAML_PARSE_TIME_BUDGET_MS + 400);
     });
 
@@ -194,7 +207,9 @@ describe("probeSamlResponseParse", () => {
       const response = encrypted(assertion);
       expect(checkSamlResponseBounds(response)).toBeNull();
 
-      await expect(probeSamlResponseParse(response, sp.privateKey, IDP)).resolves.toEqual(OPENED_TOO_COSTLY);
+      await expect(probeSamlResponseParse(response, sp.privateKey, ROLLOVER_IDP)).resolves.toEqual(
+        OPENED_TOO_COSTLY
+      );
     });
 
     test("decrypts nothing in a response with no issuer, which jackson refuses before decrypting", async () => {
