@@ -25,8 +25,25 @@ const startRefusingProvider = async (): Promise<{ server: Server; port: number; 
   return { server, port: (server.address() as AddressInfo).port, calls };
 };
 
+type TRun = { status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string };
+
+/**
+ * The start and the end of `text`: the error's message comes first, and Vite can follow it with pages of
+ * the module's source.
+ */
+const clip = (text: string, size = 2000): string =>
+  text.length > 2 * size ? `${text.slice(0, size)}\n[…]\n${text.slice(-size)}` : text;
+
+/** How the run ended, and what it printed: a failed assertion shows why the eval stopped. */
+const describeRun = (run: TRun): string =>
+  [
+    `exit ${run.status ?? "none"}, signal ${run.signal ?? "none"}`,
+    `--- stderr ---\n${clip(run.stderr)}`,
+    `--- stdout ---\n${clip(run.stdout)}`,
+  ].join("\n");
+
 const runEval = (port: number, args: ReadonlyArray<string>) =>
-  new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+  new Promise<TRun>((resolve, reject) => {
     const child = spawn(
       tsxExecutable,
       ["scripts/run-esm-script.mts", "scripts/qsf-import-eval.ts", ...args],
@@ -49,7 +66,7 @@ const runEval = (port: number, args: ReadonlyArray<string>) =>
     child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.on("error", reject);
-    child.on("close", (status) => resolve({ status, stdout, stderr }));
+    child.on("close", (status, signal) => resolve({ status, signal, stdout, stderr }));
   });
 
 describe("pnpm qsf:eval", () => {
@@ -69,15 +86,17 @@ describe("pnpm qsf:eval", () => {
       const result = await runEval(provider.port, ["--fixture=simple"]);
 
       // `tsx` alone stopped here, before any call: `@formbricks/ai` only exports `import`.
-      expect(result.stderr).not.toContain("ERR_PACKAGE_PATH_NOT_EXPORTED");
-      expect(provider.calls).toEqual(["/v1/chat/completions"]);
-      expect(result.status).toBe(1);
+      expect(result.stderr, describeRun(result)).not.toContain("ERR_PACKAGE_PATH_NOT_EXPORTED");
+      expect(provider.calls, describeRun(result)).toEqual(["/v1/chat/completions"]);
+      expect(result.status, describeRun(result)).toBe(1);
       // The run's line names the provider's refusal, and nothing of its message.
       const lines = result.stdout
         .split("\n")
         .filter((line) => line.startsWith("{"))
         .map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(lines).toEqual([{ run: 1, fixture: "simple.qsf", failed: "AI_APICallError" }]);
+      expect(lines, describeRun(result)).toEqual([
+        { run: 1, fixture: "simple.qsf", failed: "AI_APICallError" },
+      ]);
     }
   );
 });
