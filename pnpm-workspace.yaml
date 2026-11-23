@@ -177,6 +177,11 @@ overrides:
   # Pinned to the lowest release covering all the advisories above.
   # load-bearing: @hono/node-server resolves 4.x via @modelcontextprotocol/sdk and @prisma/dev (dev/MCP-only).
   hono: 4.13.7
+  # GHSA-7589-6fvf-x4pw (CVE-2026-121707): effect <=3.22.0 has a ReDoS in Schema.TemplateLiteral; patched
+  # in 3.22.1. Pinned to 3.22.5, the latest 3.x release (4.x is a different major API).
+  # load-bearing: @prisma/config pins effect 3.20.0 exactly (loaded by the prisma CLI, e.g. `migrate deploy`).
+  # Drop once @prisma/config depends on effect >=3.22.1.
+  "@prisma/config>effect": 3.22.5
   # OpenTelemetry / protobuf chains.
   # ENG-1962 / GHSA-j3f2-48v5-ccww (CVE-2026-59877): protobufjs .proto option-parsing infinite-loop DoS,
   # patched in 8.6.6. ENG-1963 / GHSA-jfj6-75fj-8934 (CVE-2026-59876): text-format map prototype
